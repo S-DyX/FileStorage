@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Folders\**" />
+    <EmbeddedResource Remove="Folders\**" />
+    <None Remove="Folders\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="appsettings.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FileStorage.Contracts.Rest.Impl\FileStorage.Contracts.Rest.Impl.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Service.Registry">
+      <HintPath>..\..\ServiceRegistry\Service.Registry.Host\bin\Debug\netcoreapp3.1\Service.Registry.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

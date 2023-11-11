@@ -1,0 +1,1049 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>FileStorage.Core</name>
+    </assembly>
+    <members>
+        <member name="T:FileStorage.Core.FileContainer">
+            <summary>
+            contains file details 
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FileContainer.#ctor">
+            <summary>
+            Ctor
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.FileContainer.Id">
+            <summary>
+            Can be Md5, sha1 or Guid
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.FileContainer.FolderId">
+            <summary>
+            Can be Md5, sha1 or Guid
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.FileContainer.Name">
+            <summary>
+            File name
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.FileContainer.Stream">
+            <summary>
+            File stream
+            </summary>
+        </member>
+        <member name="T:FileStorage.Core.FileStorage">
+            <summary>
+            Hierarchical file storage stored on disk
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.#ctor(System.String)">
+            <summary>
+            Ctor
+            </summary>
+            <param name="name">Name of root directory</param>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.Save(FileStorage.Core.FileContainer)">
+            <summary>
+             <see cref="M:FileStorage.Core.IFileStorage`1.Save(FileStorage.Core.FileContainer)"/>
+            </summary>
+            <param name="file"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.SaveToFile(FileStorage.Core.Contracts.SaveFileRequest)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.SaveToFile(FileStorage.Core.Contracts.SaveFileRequest)"/>
+            </summary>
+            <param name="request"></param> 
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.ClearTtl(System.DateTime)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.ClearTtl(System.DateTime)"/>
+            </summary>
+            <param name="date"></param>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.Append(System.Byte[],System.String)">
+            <summary>
+            <see cref="!:IFileStorage&lt;TValue&gt;.Append(byte[], string)"/>
+            </summary>
+            <param name="array"></param>
+            <param name="id"></param>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.Save(System.Byte[],System.String)">
+            <summary>
+            <see cref="!:IFileStorage&lt;TValue&gt;.Save(byte[], string)"/>
+            </summary>
+            <param name="array"></param>
+            <param name="id"></param>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.Get(System.String)">
+            <summary>
+            <see cref="!:IFileStorage&lt;TValue&gt;.Get(string)"/>
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.GetStream(System.String)">
+            <summary>
+            <see cref="!:IFileStorage&lt;TValue&gt;.GetStream(string)"/>
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.Delete(System.String)">
+            <summary>
+            <see cref="!:IFileStorage&lt;TValue&gt;.Delete(string)"/>
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.DeleteTemp(System.String)">
+            <summary>
+            <see cref="!:IFileStorage&lt;TValue&gt;.DeleteTemp(string)"/>
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.Exists(System.String)">
+            <summary>
+            <see cref="!:IFileStorage&lt;TValue&gt;.Exists(string)"/>
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.ChangeDepthDirectory(System.Int32,System.Int32)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.ChangeDepthDirectory(System.Int32,System.Int32)"/>
+            </summary>
+            <param name="oldDepth"></param>
+            <param name="newDepth"></param>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.GetCount">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.GetCount"/>
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.GetIds(System.Int64,System.Int32)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.GetIds(System.Int64,System.Int32)"/>
+            </summary>
+            <param name="offset"></param>
+            <param name="count"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.RefreshLog">
+            <summary>
+             <see cref="M:FileStorage.Core.IFileStorage`1.RefreshLog"/>
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.GetLog(System.DateTime,System.Int32)">
+            <summary>
+             <see cref="M:FileStorage.Core.IFileStorage`1.GetLog(System.DateTime,System.Int32)"/>
+            </summary>
+            <param name="time"></param>
+            <param name="take"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.GetLogDateById(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.GetLogDateById(System.String)"/>
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.GetFullFileName(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.GetFullFileName(System.String)"/>
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.Move(System.String,System.String)">
+            <summary>
+            <see cref="!:IFileStorage&lt;TValue&gt;.Move(string, string)"/>
+            </summary>
+            <param name="fromId"></param>
+            <param name="toId"></param>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.GetSize(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.GetSize(System.String)"/>
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.GetFullFileName(System.String,System.Boolean)">
+            <summary>
+            
+            </summary>
+            <param name="id"></param>
+            <param name="createDirectory"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.Save(System.IO.Stream,System.String)">
+            <summary>
+            <see cref="!:IFileStorage&lt;TValue&gt;.Save(Stream, string)"/>
+            </summary>
+            <param name="stream"></param>
+            <param name="id"></param>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.SaveAsHash(System.IO.Stream)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.SaveAsHash(System.IO.Stream)"/>
+            </summary>
+            <param name="input"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.SaveStream(System.IO.Stream,System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.SaveStream(System.IO.Stream,System.String)"/>
+            </summary>
+            <param name="input"></param>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.DeleteAll">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.DeleteAll"/>
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.GetRelativeFileName(System.String)">
+            <summary>
+             <see cref="!:IFileStorage&lt;TValue&gt;.GetRelativeFileName(string)"/>
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="T:FileStorage.Core.FileStorageSettings">
+            <summary>
+            Impl <see cref="T:FileStorage.Core.Interfaces.Settings.IFileStorageSettings"/>
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageSettings.#ctor">
+            <summary>
+            Ctor
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageSettings.#ctor(System.String,System.Int32,System.Int32)">
+            <summary>
+            Ctor
+            </summary>
+            <param name="rootDirectory">FS root directory</param>
+            <param name="elementsCount">how many hash elements are involved in creating a directory</param>
+            <param name="depth">how many nested directories will be created should be less than <see cref="P:FileStorage.Core.FileStorageSettings.ElementsCount"/></param>
+        </member>
+        <member name="P:FileStorage.Core.FileStorageSettings.RootDirectory">
+            <summary>
+            <see cref="P:FileStorage.Core.Interfaces.Settings.IFileStorageSettings.RootDirectory"/>
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.FileStorageSettings.ElementsCount">
+            <summary>
+            <see cref="P:FileStorage.Core.Interfaces.Settings.IFileStorageSettings.ElementsCount"/>
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.FileStorageSettings.Depth">
+            <summary>
+            <see cref="P:FileStorage.Core.Interfaces.Settings.IFileStorageSettings.Depth"/>
+            </summary>
+        </member>
+        <member name="T:FileStorage.Core.FolderStorage">
+            <summary>
+            Hierarchical file storage stored on disk
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.#ctor(System.String)">
+            <summary>
+            Ctor
+            </summary>
+            <param name="name">Name of root directory</param>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.Save(FileStorage.Core.FileContainer)">
+            <summary>
+             <see cref="M:FileStorage.Core.IFileStorage`1.Save(FileStorage.Core.FileContainer)"/>
+            </summary>
+            <param name="file"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.SaveToFile(FileStorage.Core.Contracts.SaveFileRequest)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFolderStorage.SaveToFile(FileStorage.Core.Contracts.SaveFileRequest)"/>
+            </summary>
+            <param name="request"></param> 
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.ClearTtl(System.DateTime)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.ClearTtl(System.DateTime)"/>
+            </summary>
+            <param name="date"></param>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.Append(System.Byte[],FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFolderStorage.Append(System.Byte[],FileStorage.Core.FolderStorageInfo)"/>
+            </summary>
+            <param name="array"></param>
+            <param name="id"></param>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.Save(System.Byte[],FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFolderStorage.Save(System.Byte[],FileStorage.Core.FolderStorageInfo)"/>
+            </summary>
+            <param name="array"></param>
+            <param name="id"></param>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.Get(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            <see cref="!:IFolderStorage.Get(string)"/>
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.GetStream(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFolderStorage.GetStream(FileStorage.Core.FolderStorageInfo)"/>
+            </summary>
+            <param name="info"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.Delete(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            <see cref="!:IFolderStorage.Delete(string)"/>
+            </summary>
+            <param name="info"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.DeleteTemp(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFolderStorage.DeleteTemp(FileStorage.Core.FolderStorageInfo)"/>
+            </summary>
+            <param name="info"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.Exists(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFolderStorage.Exists(FileStorage.Core.FolderStorageInfo)"/>
+            </summary>
+            <param name="info"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.ChangeDepthDirectory(System.Int32,System.Int32)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.ChangeDepthDirectory(System.Int32,System.Int32)"/>
+            </summary>
+            <param name="oldDepth"></param>
+            <param name="newDepth"></param>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.GetCount">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.GetCount"/>
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.GetIds(System.Int64,System.Int32)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorage`1.GetIds(System.Int64,System.Int32)"/>
+            </summary>
+            <param name="offset"></param>
+            <param name="count"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.RefreshLog">
+            <summary>
+             <see cref="M:FileStorage.Core.IFolderStorage.RefreshLog"/>
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.GetLog(System.DateTime,System.Int32)">
+            <summary>
+             <see cref="M:FileStorage.Core.IFolderStorage.GetLog(System.DateTime,System.Int32)"/>
+            </summary>
+            <param name="time"></param>
+            <param name="take"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.GetLogDateById(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            <see cref="!:IFolderStorage.GetLogDateById(string)"/>
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.GetFullFileName(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFolderStorage.GetFullFileName(FileStorage.Core.FolderStorageInfo)"/>
+            </summary>
+            <param name="info"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.Move(FileStorage.Core.FolderStorageInfo,FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFolderStorage.Move(FileStorage.Core.FolderStorageInfo,FileStorage.Core.FolderStorageInfo)"/>
+            </summary>
+            <param name="fromId"></param>
+            <param name="toId"></param>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.GetSize(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFolderStorage.GetSize(FileStorage.Core.FolderStorageInfo)"/>
+            </summary>
+            <param name="info"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.GetFullFileName(FileStorage.Core.FolderStorageInfo,System.Boolean)">
+            <summary>
+            
+            </summary>
+            <param name="info"></param> 
+            <param name="createDirectory"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.Save(System.IO.Stream,FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFolderStorage.Save(System.IO.Stream,FileStorage.Core.FolderStorageInfo)"/>
+            </summary>
+            <param name="stream"></param>
+            <param name="id"></param>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.SaveStream(System.IO.Stream,FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFolderStorage.SaveStream(System.IO.Stream,FileStorage.Core.FolderStorageInfo)"/>
+            </summary>
+            <param name="input"></param>
+            <param name="info"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.DeleteAll">
+            <summary>
+            <see cref="M:FileStorage.Core.IFolderStorage.DeleteAll"/>
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.GetRelativeFileName(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+             <see cref="!:IFolderStorage.GetRelativeFileName(string)"/>
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="T:FileStorage.Core.IFileStorage`1">
+            <summary>
+            Hierarchical file storage stored on disk 
+            </summary>
+            <typeparam name="TValue"></typeparam>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.Save(FileStorage.Core.FileContainer)">
+            <summary>
+            Save <see cref="T:FileStorage.Core.FileContainer"/>
+            </summary>
+            <param name="file"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.Save(System.IO.Stream,`0)">
+            <summary>
+            Save stream by id
+            </summary>
+            <param name="stream"></param>
+            <param name="id"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.Append(System.Byte[],`0)">
+            <summary>
+            Append byres to the end 
+            </summary>
+            <param name="array"></param>
+            <param name="id"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.Save(System.Byte[],`0)">
+            <summary>
+            Save byte array by id
+            </summary>
+            <param name="array"></param>
+            <param name="id"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.Get(`0)">
+            <summary>
+            Get <see cref="T:FileStorage.Core.FileContainer"/> by id
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.GetStream(`0)">
+            <summary>
+            Get stream by id
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.Delete(`0)">
+            <summary>
+            Delete file by id
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.DeleteTemp(`0)">
+            <summary>
+            Delete temp file, for partial load
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.DeleteAll">
+            <summary>
+            Delete all files in repository
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.Exists(`0)">
+            <summary>
+            Is file exists 
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.GetFullFileName(`0)">
+            <summary>
+            Method return full path to the file on the disk
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.Move(`0,`0)">
+            <summary>
+            Move file 
+            </summary>
+            <param name="fromId"></param>
+            <param name="toId"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.GetRelativeFileName(`0)">
+            <summary>
+            
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.SaveAsHash(System.IO.Stream)">
+            <summary>
+            Save file stream where id get from body hash
+            </summary>
+            <param name="input"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.SaveStream(System.IO.Stream,System.String)">
+            <summary>
+            Save stream by id
+            </summary>
+            <param name="input"></param>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.ChangeDepthDirectory(System.Int32,System.Int32)">
+            <summary>
+            Change file storage hierarchies
+            </summary>
+            <param name="oldDepth"></param>
+            <param name="newDepth"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.GetCount">
+            <summary>
+            Return count of documents on file storage
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.GetIds(System.Int64,System.Int32)">
+            <summary>
+            Return ids from file storage
+            </summary>
+            <param name="offset"></param>
+            <param name="count"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.GetLog(System.DateTime,System.Int32)">
+            <summary>
+            Events log
+            </summary>
+            <param name="time"></param>
+            <param name="take"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.GetFullFileName(System.String)">
+            <summary>
+            Return full file name
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.GetSize(System.String)">
+            <summary>
+            Return file size
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.SaveToFile(FileStorage.Core.Contracts.SaveFileRequest)">
+            <summary>
+            Partial save, file saved to temporary file while close is false
+            </summary>
+            <param name="request"></param> 
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.ClearTtl(System.DateTime)">
+            <summary>
+            Delete all files which older than date
+            </summary>
+            <param name="date"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.Drop">
+            <summary>
+            Drop all 
+            </summary>
+        </member>
+        <member name="T:FileStorage.Core.IFileStorageFactory`1">
+            <summary>
+            File storage factory
+            </summary>
+            <typeparam name="TValue"></typeparam>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorageFactory`1.Create(System.String)">
+            <summary>
+            Create new file storage if not exists
+            </summary>
+            <param name="name"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorageFactory`1.Get(System.String)">
+            <summary>
+            Return exists file storage
+            </summary>
+            <param name="name"></param>
+            <returns></returns>
+        </member>
+        <member name="T:FileStorage.Core.FileStorageFactory">
+            <summary>
+            <see cref="T:FileStorage.Core.IFileStorageFactory`1"/>
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageFactory.Create(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageFactory`1.Create(System.String)"/>
+            </summary>
+            <param name="name">file storage name</param>
+            <returns><see cref="T:FileStorage.Core.IFileStorage`1"/></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageFactory.Get(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageFactory`1.Get(System.String)"/>
+            </summary>
+            <param name="name">file storage name</param>
+            <returns><see cref="T:FileStorage.Core.IFileStorage`1"/></returns>
+        </member>
+        <member name="T:FileStorage.Core.IFileStorageVirtual">
+            <summary>
+            Virtual file storage directory,reduces the number of disk accesses
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorageVirtual.Exists(System.String)">
+            <summary>
+            Is file exists
+            </summary>
+            <param name="fileName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorageVirtual.Move(System.String,System.String)">
+            <summary>
+            Move file from->to
+            </summary>
+            <param name="from"></param>
+            <param name="to"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorageVirtual.Delete(System.String)">
+            <summary>
+            Delete file
+            </summary>
+            <param name="fileName"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorageVirtual.Add(System.String)">
+            <summary>
+            Add new file
+            </summary>
+            <param name="fileName"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorageVirtual.GetCount">
+            <summary>
+            return count of files
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorageVirtual.GetFileNames(System.Int32,System.Int32)">
+            <summary>
+            Get files by offset 
+            </summary>
+            <param name="offset"></param>
+            <param name="count"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorageVirtual.AddDirectory(System.String,System.Boolean)">
+            <summary>
+            Add directory
+            </summary>
+            <param name="directory"></param>
+            <param name="createDirectory"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorageVirtual.DeleteDirectory(System.String)">
+            <summary>
+            Delete directory
+            </summary>
+            <param name="directory"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorageVirtual.GetCount(System.String)">
+            <summary>
+            Count 
+            </summary>
+            <param name="rootDirectory"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorageVirtual.Drop">
+            <summary>
+            Drop files
+            </summary>
+        </member>
+        <member name="T:FileStorage.Core.FileStorageVirtual">
+            <summary>
+            <see cref="T:FileStorage.Core.IFileStorageVirtual"/>
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageVirtual.#ctor(System.Int32)">
+            <summary>
+            Ctor
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageVirtual.Exists(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageVirtual.Exists(System.String)"/>
+            </summary>
+            <param name="fileName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageVirtual.Move(System.String,System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageVirtual.Move(System.String,System.String)"/>
+            </summary>
+            <param name="from">file name</param>
+            <param name="to">file name</param>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageVirtual.Add(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageVirtual.Add(System.String)"/>
+            </summary>
+            <param name="fileName"></param>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageVirtual.Delete(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageVirtual.Delete(System.String)"/>
+            </summary>
+            <param name="fileName"></param>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageVirtual.GetCount">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageVirtual.GetCount"/>
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageVirtual.GetFileNames(System.Int32,System.Int32)">
+            <summary>
+             <see cref="M:FileStorage.Core.IFileStorageVirtual.GetFileNames(System.Int32,System.Int32)"/>
+            </summary>
+            <param name="offset"></param>
+            <param name="count"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageVirtual.AddDirectory(System.String,System.Boolean)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageVirtual.AddDirectory(System.String,System.Boolean)"/>
+            </summary>
+            <param name="directory"></param>
+            <param name="createDirectory"></param>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageVirtual.DeleteDirectory(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageVirtual.DeleteDirectory(System.String)"/>
+            </summary>
+            <param name="directory"></param>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageVirtual.GetCount(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageVirtual.GetCount(System.String)"/>
+            </summary>
+            <param name="rootDirectory"></param>
+            <returns></returns>
+        </member>
+        <member name="T:FileStorage.Core.IFolderStorage">
+            <summary>
+            Hierarchical folder storage stored on disk 
+            </summary> 
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.Save(FileStorage.Core.FileContainer)">
+            <summary>
+            Save <see cref="T:FileStorage.Core.FileContainer"/>
+            </summary>
+            <param name="file"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.Save(System.IO.Stream,FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            Save stream by id
+            </summary>
+            <param name="stream"></param>
+            <param name="info"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.Append(System.Byte[],FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            Append byres to the end 
+            </summary>
+            <param name="array"></param>
+            <param name="info"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.Save(System.Byte[],FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            Save byte array by id
+            </summary>
+            <param name="array"></param>
+            <param name="id"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.Get(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            Get <see cref="T:FileStorage.Core.FileContainer"/> by id
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.GetStream(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            Get stream by id
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.Delete(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            Delete file by id
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.DeleteTemp(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            Delete temp file, for partial load
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.DeleteAll">
+            <summary>
+            Delete all files in repository
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.Exists(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            Is file exists 
+            </summary>
+            <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.GetFullFileName(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            Method return full path to the file on the disk
+            </summary>
+            <param name="folderId"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.Move(FileStorage.Core.FolderStorageInfo,FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            Move file 
+            </summary>
+            <param name="fromId"></param>
+            <param name="toId"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.GetRelativeFileName(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            
+            </summary>
+            <param name="info"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.SaveStream(System.IO.Stream,FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            Save stream by id
+            </summary>
+            <param name="input"></param>
+            <param name="info"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.ChangeDepthDirectory(System.Int32,System.Int32)">
+            <summary>
+            Change file storage hierarchies
+            </summary>
+            <param name="oldDepth"></param>
+            <param name="newDepth"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.GetCount">
+            <summary>
+            Return count of documents on file storage
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.GetIds(System.Int64,System.Int32)">
+            <summary>
+            Return ids from file storage
+            </summary>
+            <param name="offset"></param>
+            <param name="count"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.GetLog(System.DateTime,System.Int32)">
+            <summary>
+            Events log
+            </summary>
+            <param name="time"></param>
+            <param name="take"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.GetSize(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            Return file size
+            </summary>
+            <param name="info"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.SaveToFile(FileStorage.Core.Contracts.SaveFileRequest)">
+            <summary>
+            Partial save, file saved to temporary file while close is false
+            </summary>
+            <param name="SaveFireRequest"></param> 
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.ClearTtl(System.DateTime)">
+            <summary>
+            Delete all files which older than date
+            </summary>
+            <param name="date"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.Drop">
+            <summary>
+            Drop store
+            </summary>
+        </member>
+        <member name="T:FileStorage.Core.IFolderStorageFactory">
+            <summary>
+            File storage factory
+            </summary>
+            <typeparam name="TValue"></typeparam>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorageFactory.Create(System.String)">
+            <summary>
+            Create new file storage if not exists
+            </summary>
+            <param name="name"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorageFactory.Get(System.String)">
+            <summary>
+            Return exists file storage
+            </summary>
+            <param name="name"></param>
+            <returns></returns>
+        </member>
+        <member name="T:FileStorage.Core.FolderStorageFactory">
+            <summary>
+            <see cref="T:FileStorage.Core.IFileStorageFactory`1"/>
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorageFactory.Create(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageFactory`1.Create(System.String)"/>
+            </summary>
+            <param name="name">file storage name</param>
+            <returns><see cref="T:FileStorage.Core.IFileStorage`1"/></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorageFactory.Get(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageFactory`1.Get(System.String)"/>
+            </summary>
+            <param name="name">file storage name</param>
+            <returns><see cref="T:FileStorage.Core.IFolderStorage"/></returns>
+        </member>
+        <member name="T:FileStorage.Core.Interfaces.DefaultWindowsService">
+            <summary>
+            Процесс приложения.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.DefaultWindowsService.#ctor">
+            <summary>
+            Создает экземпляр класса <see cref="T:FileStorage.Core.Interfaces.DefaultWindowsService"/>.
+            </summary>
+            <param name="hosts"></param>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.DefaultWindowsService.FileStorage#Core#Interfaces#IWindowsService#Start">
+            <summary>
+            Выполняется пори старте сервиса.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.DefaultWindowsService.FileStorage#Core#Interfaces#IWindowsService#Stop">
+            <summary>
+            Вызывается при остановке сервиса.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.DefaultWindowsService.FileStorage#Core#Interfaces#IWindowsService#Paused">
+            <summary>
+            Вызывается при постановке сервиса на паузу.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.DefaultWindowsService.FileStorage#Core#Interfaces#IWindowsService#Continued">
+            <summary>
+            Вызывается при продолжении работы сервиса после паузы.
+            </summary>
+        </member>
+        <member name="T:FileStorage.Core.Interfaces.IWindowsService">
+            <summary>
+            Интерфейс сервиса ОС, выполняющего работу.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.IWindowsService.Start">
+            <summary>
+            Вызывается при старте сервиса.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.IWindowsService.Stop">
+            <summary>
+            Вызывается при остановке сервиса.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.IWindowsService.Paused">
+            <summary>
+            Вызывается при постановке сервиса на паузу.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.IWindowsService.Continued">
+            <summary>
+            Вызывается при продолжении работы сервиса после паузы.
+            </summary>
+        </member>
+        <member name="T:FileStorage.Core.Interfaces.Settings.IFileStorageSettings">
+            <summary>
+            FS settings
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.Interfaces.Settings.IFileStorageSettings.RootDirectory">
+            <summary>
+            FS root directory
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.Interfaces.Settings.IFileStorageSettings.ElementsCount">
+            <summary>
+            how many hash elements are involved in creating a directory
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.Interfaces.Settings.IFileStorageSettings.Depth">
+            <summary>
+            how many nested directories will be created should be less than <see cref="P:FileStorage.Core.Interfaces.Settings.IFileStorageSettings.ElementsCount"/>
+            </summary>
+        </member>
+    </members>
+</doc>

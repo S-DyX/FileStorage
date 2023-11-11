@@ -1,0 +1,13 @@
+{
+  "RootDirectory": "/var/bsa/filestorage",
+  "IsMainNode": false,
+  "NumberOfShards": 1,
+  "ElemenetsCount": 6,
+  "TreeDepth": 3,
+  "Connection": {
+    "Tcp": {
+      "Address": "127.0.0.1",
+      "Port": 11581
+    }
+  }
+}

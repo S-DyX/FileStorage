@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <Version>1.1.43</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="6.0.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FileStorage.Core\FileStorage.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Service.Common">
+      <HintPath>..\References\Service.Common.dll</HintPath>
+    </Reference>
+    <Reference Include="Service.Registry">
+      <HintPath>..\References\Service.Registry.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
