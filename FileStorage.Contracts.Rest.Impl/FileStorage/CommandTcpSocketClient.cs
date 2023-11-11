@@ -52,7 +52,7 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 						}
 					}
 
-					Thread.Sleep(1000);
+					Thread.Sleep(200);
 				}
 				catch
 				{

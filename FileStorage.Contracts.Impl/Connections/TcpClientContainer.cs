@@ -141,7 +141,7 @@ namespace FileStorage.Contracts.Impl.Connections
 		//}
 		public event ReceiveMessage ReceiveMessageEvent;
 
-		private Task _mainTask;
+		private Thread _mainTask;
 
 
 
@@ -240,7 +240,8 @@ namespace FileStorage.Contracts.Impl.Connections
 			if (!_isRun)
 			{
 				_isRun = true;
-				_mainTask = Task.Factory.StartNew(Process);
+				_mainTask = new Thread(Process);
+				_mainTask.Start();
 			}
 		}
 		public override void Stop()

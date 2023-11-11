@@ -36,14 +36,7 @@ namespace FileStorage.Contracts
 			return _process.ContainsKey(key);
 		}
 
-		public void WaitWhileIsLock(string key, int waitInterval = 500)
-		{
-			while (_process.ContainsKey(key))
-			{
-				Thread.Sleep(waitInterval);
-			}
-
-		}
+	 
 		public void Register(string key)
 		{
 			Check(key);

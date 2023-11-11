@@ -1,17 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using FileStorage.Core.Contracts;
+﻿using FileStorage.Core.Contracts;
 using FileStorage.Core.Entities;
 using FileStorage.Core.Helpers;
 using FileStorage.Core.Interfaces;
 using FileStorage.Core.Interfaces.Settings;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading.Tasks;
 using File = System.IO.File;
 
 
@@ -73,7 +71,7 @@ namespace FileStorage.Core
 					using (var outstream = File.Open(tempFileName, FileMode.Create, FileAccess.Write))
 					{
 						StreamHelper.CopyStream(stream, outstream);
-						outstream.Close(); 
+						outstream.Close();
 					}
 					MoveFile(fileName, tempFileName, fileInfo);
 				}
@@ -118,35 +116,35 @@ namespace FileStorage.Core
 		/// </summary>
 		/// <param name="request"></param> 
 		public void SaveToFile(SaveFileRequest request)
-        {
-            var fileName = GetFullFileName(request.Id, true);
-            var fileInfo = new FileInfo(fileName);
-            //if (fileInfo.Directory.Exists)
-            {
-                var tempFileName = GetTempFileName(fileName, request.SessionId);
-                try
-                {
-                    var bytes = request.Bytes;
-                    using (var outstream = File.Open(tempFileName, FileMode.Append))
-                    {
-                        outstream.Write(bytes, (int)0, bytes.Length);
-                        outstream.Close();
-                    }
-                    if (request.Close)
-                    {
-                        MoveFile(fileName, tempFileName, fileInfo);
-                    }
-                }
-                catch
-                {
-                    if (_fileStorageVirtual.Exists(tempFileName))
-                    {
-                        _fileStorageVirtual.Delete(tempFileName);
-                    }
-                    throw;
-                }
-            }
-        }
+		{
+			var fileName = GetFullFileName(request.Id, true);
+			var fileInfo = new FileInfo(fileName);
+			//if (fileInfo.Directory.Exists)
+			{
+				var tempFileName = GetTempFileName(fileName, request.SessionId);
+				try
+				{
+					var bytes = request.Bytes;
+					using (var outstream = File.Open(tempFileName, FileMode.Append))
+					{
+						outstream.Write(bytes, (int)0, bytes.Length);
+						outstream.Close();
+					}
+					if (request.Close)
+					{
+						MoveFile(fileName, tempFileName, fileInfo);
+					}
+				}
+				catch
+				{
+					if (_fileStorageVirtual.Exists(tempFileName))
+					{
+						_fileStorageVirtual.Delete(tempFileName);
+					}
+					throw;
+				}
+			}
+		}
 
 		/// <summary>
 		/// <see cref="IFileStorage{TValue}.ClearTtl(DateTime)"/>
@@ -154,7 +152,7 @@ namespace FileStorage.Core
 		/// <param name="date"></param>
 		public void ClearTtl(DateTime date)
 		{
-			
+
 			Console.WriteLine("Start:");
 			var files = _log.GetChangesToIds(date).OrderBy(x => x.Time).ToList();
 			foreach (var file in files)

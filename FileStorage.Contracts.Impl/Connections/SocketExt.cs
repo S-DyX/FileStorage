@@ -62,7 +62,7 @@ namespace FileStorage.Contracts.Impl.Connections
                 {
                     stream.SendBytes(new Byte[] { 32 });
                     i = 0;
-                    Thread.Sleep(100);
+                    Thread.Sleep(0);
                 }
 
                 i++;
@@ -82,7 +82,7 @@ namespace FileStorage.Contracts.Impl.Connections
                     i = 0;
 
                 }
-                Thread.Sleep(30);
+                Thread.Sleep(5);
 
                 i++;
             }
@@ -96,7 +96,7 @@ namespace FileStorage.Contracts.Impl.Connections
                 if (continueWait != null && !continueWait.Invoke())
                     break;
 
-                Thread.Sleep(30);
+                Thread.Sleep(5);
 
                 i++;
             }
