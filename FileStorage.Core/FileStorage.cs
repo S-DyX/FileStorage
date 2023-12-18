@@ -248,16 +248,19 @@ namespace FileStorage.Core
 		/// <returns></returns>
 		public Stream GetStream(string id)
 		{
+			return GetStream(id, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete | FileShare.Read | FileShare.Write);
+		}
+		public Stream GetStream(string id, FileMode mode, FileAccess access, FileShare share)
+		{
 			var fileName = GetFullFileName(id);
 			if (_fileStorageVirtual.Exists(fileName))
 			{
-				return new FileStream(fileName, FileMode.Open, FileAccess.Read,
-					FileShare.ReadWrite | FileShare.Delete | FileShare.Read | FileShare.Write);
-
+				return new FileStream(fileName, mode, access,
+					share);
 			}
+
 			return null;
 		}
-
 		/// <summary>
 		/// <see cref="IFileStorage{TValue}.Delete(string)"/>
 		/// </summary>

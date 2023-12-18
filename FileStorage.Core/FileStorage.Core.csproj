@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>netcoreapp3.1</TargetFramework>
     <Authors>Stanislav Batyrgareev</Authors>
-    <Version>3.1.49</Version>
+    <Version>7.0.10</Version>
     <AssemblyVersion></AssemblyVersion>
     <Description>FileStorage.Core is Hierarchical file storage</Description>
     <Copyright>Stanislav Batyrgareev</Copyright>
@@ -14,7 +14,9 @@
     <FileVersion></FileVersion>
     <PackageTags>file storage disk hierarchical bsa filestorage files stream store</PackageTags>
     <PackageLicenseExpression>BSD-2-Clause</PackageLicenseExpression>
-    <PackageReleaseNotes>IFileStorage&lt;string&gt; Get(string name) Fixed </PackageReleaseNotes>
+    <PackageReleaseNotes>Added method
+Stream GetStream(string id, FileMode mode, FileAccess access, FileShare share)</PackageReleaseNotes>
+    <Title>FileStorage</Title>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">

@@ -37,6 +37,13 @@ namespace FileStorage.Core
 		void Save(Stream stream, FolderStorageInfo info);
 
 		/// <summary>
+		/// Get stream by id
+		/// </summary>
+		/// <param name="info"></param>
+		/// <returns></returns>
+		Stream GetStream(FolderStorageInfo info);
+
+		/// <summary>
 		/// Append byres to the end 
 		/// </summary>
 		/// <param name="array"></param>
@@ -63,7 +70,7 @@ namespace FileStorage.Core
 		/// </summary>
 		/// <param name="id"></param>
 		/// <returns></returns>
-		Stream GetStream(FolderStorageInfo info);
+		Stream GetStream(FolderStorageInfo info, FileMode mode, FileAccess access, FileShare share);
 
 		/// <summary>
 		/// Delete file by id

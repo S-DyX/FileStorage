@@ -57,6 +57,16 @@ namespace FileStorage.Core
 		Stream GetStream(TValue id);
 
 		/// <summary>
+		/// Get stream by id
+		/// </summary>
+		/// <param name="id"></param>
+		/// <param name="mode"></param>
+		/// <param name="access"></param>
+		/// <param name="share"></param>
+		/// <returns></returns>
+		Stream GetStream(string id, FileMode mode, FileAccess access, FileShare share);
+
+		/// <summary>
 		/// Delete file by id
 		/// </summary>
 		/// <param name="id"></param>

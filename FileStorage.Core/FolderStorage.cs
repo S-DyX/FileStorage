@@ -233,6 +233,11 @@ namespace FileStorage.Core
 			return $"{fileName}_{sessionId ?? string.Empty}.tmp";
 		}
 
+		public Stream GetWriteStream(FolderStorageInfo info)
+		{
+			throw new NotImplementedException();
+		}
+
 		/// <summary>
 		/// <see cref="IFolderStorage.Append(byte[], FolderStorageInfo)"/>
 		/// </summary>
@@ -293,13 +298,18 @@ namespace FileStorage.Core
 		/// <returns></returns>
 		public Stream GetStream(FolderStorageInfo info)
 		{
+			return GetStream(info, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete | FileShare.Read | FileShare.Write);
+		}
+
+		public Stream GetStream(FolderStorageInfo info, FileMode mode, FileAccess access, FileShare share)
+		{
 			var fileName = GetFullFileName(info);
 			if (_fileStorageVirtual.Exists(fileName))
 			{
-				return new FileStream(fileName, FileMode.Open, FileAccess.Read,
-					FileShare.ReadWrite | FileShare.Delete | FileShare.Read | FileShare.Write);
-
+				return new FileStream(fileName, mode, access,
+					share);
 			}
+
 			return null;
 		}
 
