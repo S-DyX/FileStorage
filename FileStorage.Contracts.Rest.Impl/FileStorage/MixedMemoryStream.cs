@@ -7,14 +7,16 @@ using System.Threading.Tasks;
 
 namespace FileStorage.Contracts.Rest.Impl.FileStorage
 {
-	internal sealed class MixedMemoryStream : Stream
+	public sealed class MixedMemoryStream : Stream
 	{
+		private readonly bool _deleteFile;
 		private readonly string _fileName;
 		private Stream _stream;
 		private bool isFileStream;
 		private readonly int _maxMemorySize = int.MaxValue >> 3;
-		public MixedMemoryStream()
+		public MixedMemoryStream(bool deleteFile = false)
 		{
+			_deleteFile = deleteFile;
 			_fileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Guid.NewGuid().ToString());
 			_stream = new MemoryStream();
 
@@ -74,7 +76,7 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		{
 			_stream.Close();
 			_stream.Dispose();
-			if (disposing && isFileStream)
+			if (_deleteFile && disposing && isFileStream)
 			{
 				if (File.Exists(_fileName))
 				{
