@@ -23,6 +23,7 @@ namespace FileStorage.Core
 		private readonly string _name;
 		private readonly IFileStorageSettings _settings;
 		private readonly IFileStorageVirtual _fileStorageVirtual;
+		private readonly ILocalLogger _localLogger;
 		private IFileStorageLog _log;
 		private readonly string _rootDirectory;
 		/// <summary>
@@ -30,14 +31,15 @@ namespace FileStorage.Core
 		/// </summary>
 		/// <param name="name">Name of root directory</param>
 		public FileStorage(string name)
-			: this(name, new FileStorageSettings(), new FileStorageVirtual())
+			: this(name, new FileStorageSettings(), new FileStorageVirtual(), null)
 		{ }
 
-		public FileStorage(string name, IFileStorageSettings settings, IFileStorageVirtual fileStorageVirtual)
+		public FileStorage(string name, IFileStorageSettings settings, IFileStorageVirtual fileStorageVirtual, ILocalLogger localLogger)
 		{
 			_name = name;
 			_settings = settings;
 			_fileStorageVirtual = fileStorageVirtual;
+			_localLogger = localLogger;
 			_rootDirectory = GetRoot(_settings, name);
 			_log = new FileStorageLog(_rootDirectory);
 			Task.Factory.StartNew(() => _fileStorageVirtual.GetCount(_rootDirectory));
@@ -601,10 +603,19 @@ namespace FileStorage.Core
 		public long GetSize(string id)
 		{
 			var fullName = GetFullFileName(id, false);
-			if (_fileStorageVirtual.Exists(fullName))
+			try
 			{
-				var fileInfo = new FileInfo(fullName);
-				return fileInfo.Length;
+
+				if (_fileStorageVirtual.Exists(fullName))
+				{
+					var fileInfo = new FileInfo(fullName);
+					return fileInfo.Length;
+				}
+			}
+			catch (FileNotFoundException e)
+			{
+				_localLogger?.Error($"{fullName};{e.Message}", e);
+				_fileStorageVirtual.Release(fullName);
 			}
 			return 0;
 		}

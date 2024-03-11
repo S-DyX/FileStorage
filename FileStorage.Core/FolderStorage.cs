@@ -670,10 +670,18 @@ namespace FileStorage.Core
 		public long GetSize(FolderStorageInfo info)
 		{
 			var fullName = GetFullFileName(info, false);
-			if (_fileStorageVirtual.Exists(fullName))
+			try
 			{
-				var fileInfo = new FileInfo(fullName);
-				return fileInfo.Length;
+				if (_fileStorageVirtual.Exists(fullName))
+				{
+					var fileInfo = new FileInfo(fullName);
+					return fileInfo.Length;
+				}
+			}
+			catch (FileNotFoundException e)
+			{
+				_localLogger?.Error($"{fullName};{e.Message}", e);
+				_fileStorageVirtual.Release(fullName);
 			}
 			return 0;
 		}

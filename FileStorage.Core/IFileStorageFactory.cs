@@ -40,13 +40,15 @@ namespace FileStorage.Core
 	{
 		private readonly IFileStorageSettings _fileStorageSettings;
 		private readonly IFileStorageVirtual _fileStorageVirtual;
+		private readonly ILocalLogger _localLogger;
 		private readonly Dictionary<string, IFileStorage<string>> _fileStorages = new Dictionary<string, IFileStorage<string>>();
 		private readonly object _sync = new object();
 
-		public FileStorageFactory(IFileStorageSettings fileStorageSettings, IFileStorageVirtual fileStorageVirtual)
+		public FileStorageFactory(IFileStorageSettings fileStorageSettings, IFileStorageVirtual fileStorageVirtual, ILocalLogger localLogger)
 		{
 			_fileStorageSettings = fileStorageSettings;
 			_fileStorageVirtual = fileStorageVirtual;
+			_localLogger = localLogger;
 		}
 
 		/// <summary>
@@ -68,7 +70,7 @@ namespace FileStorage.Core
 				if (_fileStorages.ContainsKey(key))
 					return _fileStorages[key];
 
-				var fileStorage = new FileStorage(key, _fileStorageSettings, _fileStorageVirtual);
+				var fileStorage = new FileStorage(key, _fileStorageSettings, _fileStorageVirtual, _localLogger);
 				_fileStorages[key] = fileStorage;
 				return fileStorage;
 			}

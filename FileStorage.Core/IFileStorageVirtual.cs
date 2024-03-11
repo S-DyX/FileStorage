@@ -14,6 +14,11 @@ namespace FileStorage.Core
 	public interface IFileStorageVirtual
 	{
 		/// <summary>
+		/// if file not found
+		/// </summary>
+		/// <param name="fileName"></param>
+		void Release(string fileName);
+		/// <summary>
 		/// Is file exists
 		/// </summary>
 		/// <param name="fileName"></param>
@@ -143,6 +148,22 @@ namespace FileStorage.Core
 				}
 			}
 		}
+		/// <summary>
+		/// <see cref="IFileStorageVirtual.Release(string)"/>
+		/// </summary>
+		/// <param name="fileName"></param>
+		public void Release(string fileName)
+		{
+			lock (_sync)
+			{
+				var lower = GetKey(fileName);
+				if (_dictFiles.ContainsKey(lower))
+				{
+					_files.Remove(lower);
+					_dictFiles.Remove(lower);
+				}
+			}
+		}
 
 		/// <summary>
 		/// <see cref="IFileStorageVirtual.Delete(string)"/>
@@ -153,13 +174,13 @@ namespace FileStorage.Core
 
 			lock (_sync)
 			{
-				var lower = GetKey(fileName);
-				if (File.Exists(lower))
-					File.Delete(lower);
+				var key = GetKey(fileName);
+				if (File.Exists(key))
+					File.Delete(key);
 				else if (File.Exists(fileName))
 					File.Delete(fileName);
-				if (_dictFiles.ContainsKey(lower))
-					_dictFiles.Remove(lower);
+				if (_dictFiles.ContainsKey(key))
+					_dictFiles.Remove(key);
 			}
 
 		}

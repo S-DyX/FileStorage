@@ -17,7 +17,11 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		public MixedMemoryStream(bool deleteFile = false)
 		{
 			_deleteFile = deleteFile;
-			_fileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Guid.NewGuid().ToString());
+			var directory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Temp");
+			if (!Directory.Exists(directory))
+				Directory.CreateDirectory(directory);
+
+			_fileName = Path.Combine(directory, Guid.NewGuid().ToString());
 			_stream = new MemoryStream();
 
 
