@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks; 
+using System.Threading.Tasks;
 
 namespace FileStorage.Core
 {
@@ -74,7 +74,7 @@ namespace FileStorage.Core
 		/// <param name="rootDirectory"></param>
 		/// <returns></returns>
 		long GetCount(string rootDirectory);
-		
+
 		/// <summary>
 		/// Drop files
 		/// </summary>
@@ -113,9 +113,9 @@ namespace FileStorage.Core
 		{
 			var lower = GetKey(fileName);
 			if (_dictFiles.ContainsKey(lower))
-				return _dictFiles[lower];
+				return true;
 
-			var exists = File.Exists(lower) || File.Exists(fileName);
+			var exists = File.Exists(lower) || (lower != fileName && File.Exists(fileName));
 			if (exists)
 				Add(lower);
 			return exists;

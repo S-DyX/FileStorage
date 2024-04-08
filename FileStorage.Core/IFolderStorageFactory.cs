@@ -93,10 +93,9 @@ namespace FileStorage.Core
 				return _fileStorages[key];
 			var directory = FileStorage.GetRoot(_fileStorageSettings, name);
 
-			if (Directory.Exists(directory))
-				return Create(name);
+			return Create(name);
 
-			return Create(@default);
+			//return Create(@default);
 		}
 
 		public List<IFolderStorage> GetAll()
