@@ -318,7 +318,7 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 				var result = new MixedMemoryStream();
 
 				var buffer = new byte[size / 10];
-				var offset = 0;
+				var offset = 0l;
 
 				while (offset < size)
 				{

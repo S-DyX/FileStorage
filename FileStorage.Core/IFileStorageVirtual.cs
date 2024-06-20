@@ -180,7 +180,11 @@ namespace FileStorage.Core
 				else if (File.Exists(fileName))
 					File.Delete(fileName);
 				if (_dictFiles.ContainsKey(key))
+				{
+
 					_dictFiles.Remove(key);
+					this._files.Remove(key);
+				}
 			}
 
 		}

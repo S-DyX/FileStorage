@@ -1,12 +1,10 @@
 ﻿using Newtonsoft.Json;
-using Service.Registry.Common;
+using Service.Registry.Common.Entities;
 using Service.Registry.Utils;
-using System;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
-using Service.Registry.Common.Entities;
 
 namespace FileStorage.Contracts.Rest.Impl.FileStorage
 {
@@ -275,6 +273,10 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			return response?.Exists ?? false;
 		}
 
+		/// <summary>
+		/// 50 Мб
+		/// </summary>
+		private static int _maxLen = 1024 * 1024 * 20;
 		public Stream GetStream(string externalFolderId, string externalFileId, string name)
 		{
 			if (IsExists(externalFolderId, externalFileId, name))
@@ -284,8 +286,11 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 
 				var result = new MixedMemoryStream();
 
-				var buffer = new byte[size / 10];
-				var offset = 0;
+				var len = size / 10;
+				if (len > 1024 * 1024 * 20)
+					len = _maxLen;
+				var buffer = new byte[len];
+				var offset = 0l;
 
 				while (offset < size)
 				{

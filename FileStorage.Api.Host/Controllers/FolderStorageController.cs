@@ -119,7 +119,7 @@ namespace FileStorage.Api.Host.Controllers
 
 		[HttpGet]
 		[Route("getbytes")]
-		public object GetBytes(string folderId, string fileId, int? offset, int? count)
+		public object GetBytes(string folderId, string fileId, long? offset, int? count)
 		{ 
             var info = GetFolderStorageInfo(folderId, fileId);
 			if (string.IsNullOrEmpty(folderId) || string.IsNullOrEmpty(fileId))

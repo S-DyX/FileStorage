@@ -82,7 +82,7 @@ namespace FileStorage.Api.Host.Controllers
        
 		[HttpGet]
 		[Route("getbytes")]
-		public object GetBytes(string id, int? offset, int? count)
+		public object GetBytes(string id, long? offset, int? count)
 		{
 			var storageName = GetFsName();
 
@@ -249,7 +249,7 @@ namespace FileStorage.Api.Host.Controllers
 	}
 	internal class GetBytesResult
 	{
-		public int? Offset { get; set; }
+		public long? Offset { get; set; }
 		public int? Size { get; set; }
 		public byte[] Bytes { get; set; }
 
