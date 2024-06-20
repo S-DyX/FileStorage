@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>netcoreapp3.1</TargetFramework>
-    <Version>3.1.58</Version>
+    <Version>3.1.59</Version>
     <Authors>Stanislav Batyrgareev</Authors>
     <Description>Fixed downloading of large files, api version is not lower than 3.1.58</Description>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
