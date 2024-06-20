@@ -303,8 +303,8 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 
 				result.Seek(0, SeekOrigin.Begin);
 				//Save to cache
-				var bytes = new byte[result.Length];
-				result.Read(bytes, 0, bytes.Length);
+				//var bytes = new byte[result.Length];
+				///result.Read(bytes, 0, bytes.Length);
 				//_cache[internalId] = bytes;
 
 				result.Seek(0, SeekOrigin.Begin);
