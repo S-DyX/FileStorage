@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <Version>7.0.9</Version>
     <Authors>Stanislav Batyrgareev</Authors>
     <Description>Fixed downloading of large files, api version is not lower than 3.1.58</Description>
@@ -23,7 +23,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="6.0.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="6.0.0" />
-    <PackageReference Include="Service.Registry" Version="7.0.4" />
+    <PackageReference Include="Service.Registry" Version="3.1.47" />
   </ItemGroup>
 
 </Project>

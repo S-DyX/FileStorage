@@ -15,6 +15,8 @@ namespace FileStorage.Core
         public string StorageName { get; set; }
 
         public string UserId { get; set; }
+
+		public bool DoNotNeedLog { get; set; }
 	}
 
     /// <summary>

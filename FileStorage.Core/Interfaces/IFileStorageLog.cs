@@ -21,6 +21,8 @@ namespace FileStorage.Core.Interfaces
 
 	public interface IFileStorageLog
 	{
+		List<EventMessage> GetAll();
+		void Rewrite(List<EventMessage> eventMessages, DateTime time);
 		void Write(EventType type, string fileId, long size, string folderId = null);
 
 		void Write(EventMessage eventMessage);
@@ -75,10 +77,24 @@ namespace FileStorage.Core.Interfaces
 			_rootDirectory = rootDirectory;
 			_newEvents = new List<EventMessage>(10000);
 			_scope = new EventMessageScope();
+
+			Reinit();
+
+			_repeater.Start((token) =>
+			{
+				Flush();
+			});
+			_repeaterFileCheck.Start((token) =>
+			{
+				Check();
+			});
+		}
+
+		private void Reinit()
+		{
 			var rootLogDir = GetRootLogDir();
 			if (Directory.Exists(rootLogDir))
 			{
-				
 				var files = Directory.GetFiles(rootLogDir, "*.log", SearchOption.AllDirectories);
 				var regex = new Regex("(?<y>\\d{4})(?<m>\\d{2})\\.log");
 				foreach (var file in files)
@@ -94,26 +110,13 @@ namespace FileStorage.Core.Interfaces
 						AddFile(file, date, eventMessages);
 						_scope.AddRange(eventMessages);
 					}
-
 				}
 			}
 			else
 			{
 				Directory.CreateDirectory(rootLogDir);
 			}
-
-			_repeater.Start((token) =>
-			{
-				Flush();
-			});
-			_repeaterFileCheck.Start((token) =>
-			{
-				Check();
-			});
 		}
-
-	
-
 
 
 		public void Write(EventType type, string fileId, long size, string folderId)
@@ -128,7 +131,25 @@ namespace FileStorage.Core.Interfaces
 				Size = size
 			});
 		}
+		public void Rewrite(List<EventMessage> eventMessages, DateTime time)
+		{
+			lock (_syncSave)
+			{
+				
+				var rootLogDir = GetRootLogDir();
+				var files = Directory.GetFiles(rootLogDir, "*.log", SearchOption.AllDirectories);
+				foreach (var file in files)
+				{
+					File.Move(file,$"{file}_old");
+				}
+				if (eventMessages.Any())
+					Save(eventMessages, DateTime.UtcNow);
+				Reinit();
 
+			}
+
+
+		}
 		public void Write(EventMessage eventMessage)
 		{
 
@@ -146,7 +167,7 @@ namespace FileStorage.Core.Interfaces
 			{
 				if (_newEvents.Any())
 				{
-					Save(_newEvents);
+					Save(_newEvents, DateTime.UtcNow);
 					_newEvents.Clear();
 				}
 			}
@@ -180,14 +201,14 @@ namespace FileStorage.Core.Interfaces
 
 
 
-		private void Save(List<EventMessage> items)
+		private void Save(List<EventMessage> items, DateTime date)
 		{
 			var sb = new StringBuilder();
 			foreach (var item in items)
 			{
 				sb.AppendLine($"{item.Time};{item.Id};{item.FolderId};{(int)item.Type};{item.Size}");
 			}
-			var fileName = GetFileName(DateTime.UtcNow);
+			var fileName = GetFileName(date);
 			var fileInfo = new FileInfo(fileName);
 			if (!fileInfo.Exists && !fileInfo.Directory.Exists)
 			{
@@ -346,7 +367,11 @@ namespace FileStorage.Core.Interfaces
 			Refresh(time);
 			return _scope.GetToDate(time);
 		}
-
+		public List<EventMessage> GetAll()
+		{
+			Refresh(DateTime.UtcNow);
+			return _scope.GetAll();
+		}
 		public void Clear()
 		{
 			_newEvents.Clear();

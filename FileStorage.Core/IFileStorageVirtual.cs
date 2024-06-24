@@ -271,7 +271,7 @@ namespace FileStorage.Core
 		/// <returns></returns>
 		public long GetCount(string rootDirectory)
 		{
-			if (_dictDirectories.ContainsKey(rootDirectory))
+			if (!_dictDirectories.ContainsKey(rootDirectory))
 			{
 				var directories = Directory.GetDirectories(rootDirectory);
 				GetSubDirectoryCount(directories);

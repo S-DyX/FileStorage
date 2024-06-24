@@ -156,12 +156,22 @@ namespace FileStorage.Core
 		{
 
 			Console.WriteLine("Start:");
-			var files = _log.GetChangesToIds(date).OrderBy(x => x.Time).ToList();
+			var files = _log.GetAll().OrderBy(x => x.Time).ToList();
+			var save = new List<EventMessage>();
 			foreach (var file in files)
 			{
+				if (file.Time > date)
+				{
+					//lock (save)
+					{
+
+						save.Add(file);
+					}
+				}
 				Console.WriteLine("TTL:" + file.Id);
 				Delete(file.Id);
 			}
+			_log.Rewrite(save, DateTime.UtcNow);
 			var fs = Directory.GetFiles(_rootDirectory, "*", SearchOption.AllDirectories);
 			foreach (var file in fs)
 			{

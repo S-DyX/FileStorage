@@ -1,15 +1,14 @@
-﻿using FileStorage.Core.Contracts;
-using FileStorage.Core.Entities;
-using FileStorage.Core.Helpers;
-using FileStorage.Core.Interfaces;
-using FileStorage.Core.Interfaces.Settings;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using File = System.IO.File;
+using FileStorage.Core.Contracts;
+using FileStorage.Core.Entities;
+using FileStorage.Core.Helpers;
+using FileStorage.Core.Interfaces;
+using FileStorage.Core.Interfaces.Settings;
 
 
 namespace FileStorage.Core
@@ -163,40 +162,50 @@ namespace FileStorage.Core
 		{
 
 			; _localLogger?.Info($"TTL Start:{date}");
-			var files = _log.GetChangesToIds(date).OrderBy(x => x.Time).ToList();
+			var files = _log.GetAll().OrderBy(x => x.Time).ToList();
 			var deleted = files.Where(x => x.Type == EventType.FileDelete).ToList();
-			foreach (var file in files)
+			var save = new List<EventMessage>();
+			Parallel.ForEach(files, file =>
 			{
+				if (file.Time > date)
+				{
+					lock (save)
+					{
+
+						save.Add(file);
+					}
+				}
+
 				switch (file.Type)
 				{
 					case EventType.FileDelete:
 					case EventType.Unknown:
-						continue;
+						return;
 						break;
 				}
 
-				if (deleted.FirstOrDefault(x => x.Id == file.Id) != null)
+				if (deleted.FirstOrDefault(x => x.Id == file.Id && x.Time > file.Time) != null)
 				{
-					continue;
+					return;
 				}
 
-				if (string.IsNullOrEmpty(file.FolderId))
-				{
-					var fileFound = Directory.GetFiles(_rootDirectory, file.Id, SearchOption.AllDirectories)
-						.FirstOrDefault();
+				//if (string.IsNullOrEmpty(file.FolderId))
+				//{
+				//	var fileFound = Directory.GetFiles(_rootDirectory, file.Id, SearchOption.AllDirectories)
+				//		.FirstOrDefault();
 
-					if (fileFound != null)
-					{
-						var path = fileFound.Replace(_rootDirectory, "").Replace(file.Id, "")
-							.Replace(Path.DirectorySeparatorChar.ToString(), "");
-						file.FolderId = path;
-					}
-				}
+				//	if (fileFound != null)
+				//	{
+				//		var path = fileFound.Replace(_rootDirectory, "").Replace(file.Id, "")
+				//			.Replace(Path.DirectorySeparatorChar.ToString(), "");
+				//		file.FolderId = path;
+				//	}
+				//}
 
 				if (string.IsNullOrEmpty(file.FolderId))
 				{
 					_localLogger?.Info($"File not found:{file.Id}");
-					continue;
+					return;
 				}
 
 				Delete(new FolderStorageInfo()
@@ -206,7 +215,8 @@ namespace FileStorage.Core
 					StorageName = _name
 				});
 				_localLogger?.Info("TTL:" + file.Id);
-			}
+			});
+			_log.Rewrite(save, DateTime.UtcNow);
 			var fs = Directory.GetFiles(_rootDirectory, "*", SearchOption.AllDirectories);
 			foreach (var file in fs)
 			{
@@ -337,12 +347,17 @@ namespace FileStorage.Core
 						_fileStorageVirtual.DeleteDirectory(directory);
 						//Directory.Delete(directory);
 					}
-					_log.Write(new EventMessage()
+
+					if (!info.DoNotNeedLog)
 					{
-						Type = EventType.FileDelete,
-						Id = info.FileId,
-						Time = DateTime.UtcNow
-					});
+						_log.Write(new EventMessage()
+						{
+							Type = EventType.FileDelete,
+							Id = info.FileId,
+							Time = DateTime.UtcNow
+						});
+					}
+
 					return true;
 				}
 			}

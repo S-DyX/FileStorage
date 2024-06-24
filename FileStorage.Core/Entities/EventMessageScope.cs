@@ -126,7 +126,13 @@ namespace FileStorage.Core.Entities
 				.Where(v => v.Time < time).ToList();
 			
 		}
+		public List<EventMessage> GetAll()
+		{ 
+			return _group
+				.SelectMany(s => s.Value)
+				.ToList();
 
+		}
 		public List<EventMessage> GetByDate(string id)
 		{
 			var result = new List<EventMessage>();
