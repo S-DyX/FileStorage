@@ -1,14 +1,14 @@
-﻿using System;
+﻿using FileStorage.Core.Contracts;
+using FileStorage.Core.Entities;
+using FileStorage.Core.Helpers;
+using FileStorage.Core.Interfaces;
+using FileStorage.Core.Interfaces.Settings;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using FileStorage.Core.Contracts;
-using FileStorage.Core.Entities;
-using FileStorage.Core.Helpers;
-using FileStorage.Core.Interfaces;
-using FileStorage.Core.Interfaces.Settings;
 
 
 namespace FileStorage.Core
@@ -165,6 +165,7 @@ namespace FileStorage.Core
 			var files = _log.GetAll().OrderBy(x => x.Time).ToList();
 			var deleted = files.Where(x => x.Type == EventType.FileDelete).ToList();
 			var save = new List<EventMessage>();
+			var foundAny = false;
 			Parallel.ForEach(files, file =>
 			{
 				if (file.Time > date)
@@ -176,6 +177,7 @@ namespace FileStorage.Core
 					}
 				}
 
+				foundAny = true;
 				switch (file.Type)
 				{
 					case EventType.FileDelete:
@@ -216,7 +218,8 @@ namespace FileStorage.Core
 				});
 				_localLogger?.Info("TTL:" + file.Id);
 			});
-			_log.Rewrite(save, DateTime.UtcNow);
+			if (foundAny)
+				_log.Rewrite(save, DateTime.UtcNow);
 			var fs = Directory.GetFiles(_rootDirectory, "*", SearchOption.AllDirectories);
 			foreach (var file in fs)
 			{

@@ -1,9 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
     <Authors>Stanislav Batyrgareev</Authors>
-    <Version>3.1.51</Version>
+    <Version>6.0.13</Version>
     <AssemblyVersion></AssemblyVersion>
     <Description>FileStorage.Core is Hierarchical file storage</Description>
     <Copyright>Stanislav Batyrgareev</Copyright>
@@ -14,8 +14,7 @@
     <FileVersion></FileVersion>
     <PackageTags>file storage disk hierarchical bsa filestorage files stream store</PackageTags>
     <PackageLicenseExpression>BSD-2-Clause</PackageLicenseExpression>
-    <PackageReleaseNotes>Added method
-Stream GetStream(string id, FileMode mode, FileAccess access, FileShare share)</PackageReleaseNotes>
+    <PackageReleaseNotes>Fixed clear ttl</PackageReleaseNotes>
     <Title>FileStorage</Title>
   </PropertyGroup>
 

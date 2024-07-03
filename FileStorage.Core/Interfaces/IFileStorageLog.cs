@@ -133,14 +133,14 @@ namespace FileStorage.Core.Interfaces
 		}
 		public void Rewrite(List<EventMessage> eventMessages, DateTime time)
 		{
+			var rootLogDir = GetRootLogDir();
 			lock (_syncSave)
 			{
 				
-				var rootLogDir = GetRootLogDir();
 				var files = Directory.GetFiles(rootLogDir, "*.log", SearchOption.AllDirectories);
 				foreach (var file in files)
 				{
-					File.Move(file,$"{file}_old");
+					File.Move(file,$"{file}_{Guid.NewGuid()}.old");
 				}
 				if (eventMessages.Any())
 					Save(eventMessages, DateTime.UtcNow);

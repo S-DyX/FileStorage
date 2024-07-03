@@ -13,7 +13,7 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 	/// <summary>
 	/// Impl <see cref="IFolderStorageRestService"/>
 	/// </summary>
-	public sealed class FolderStorageRestService : RestClientResponseBase, IFolderStorageRestService
+	public sealed class FolderStorageRestServiceOld : RestClientResponseBase, IFolderStorageRestService
 	{
 		private readonly string _apiV1;
 
@@ -21,7 +21,7 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// Ctor
 		/// </summary>
 		/// <param name="settings"><see cref="RestClientResponseSettings"/></param>
-		public FolderStorageRestService(RestClientResponseSettings settings) : base(settings)
+		public FolderStorageRestServiceOld(RestClientResponseSettings settings) : base(settings)
 		{
 			if (Settings.Host.EndsWith("/"))
 				_apiV1 = $"{Settings.Host}api/v1/folderStorage/";
@@ -34,7 +34,7 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// </summary>
 		/// <param name="settings"><see cref="RestClientResponseSettings"/></param>
 		/// <param name="client"><see cref="IHttpClientFactory"/></param>
-		public FolderStorageRestService(RestClientResponseSettings settings, IHttpClientFactory client) : base(settings, client)
+		public FolderStorageRestServiceOld(RestClientResponseSettings settings, IHttpClientFactory client) : base(settings, client)
 		{
 			if (Settings.Host.EndsWith("/"))
 				_apiV1 = $"{Settings.Host}api/v1/folderStorage/";
@@ -280,12 +280,34 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		public Stream GetStream(string externalFolderId, string externalFileId, string name)
 		{
 			if (IsExists(externalFolderId, externalFileId, name))
-			{ 
+			{
+
 				var size = GetSize(externalFolderId, externalFileId, name);
 
-				var result = new InternalFolderStream(Read, size, externalFolderId, externalFileId, name);
+				var result = new MixedMemoryStream();
 
-				 
+				var len = size / 10;
+				if (len > 1024 * 1024 * 20)
+					len = _maxLen;
+				var buffer = new byte[len];
+				var offset = 0l;
+
+				while (offset < size)
+				{
+					buffer = Read(externalFolderId, externalFileId, offset, buffer.Length, name);
+					if (buffer == null)
+						break;
+					offset += buffer.Length;
+					result.Write(buffer, 0, buffer.Length);
+				}
+
+				result.Seek(0, SeekOrigin.Begin);
+				//Save to cache
+				//var bytes = new byte[result.Length];
+				///result.Read(bytes, 0, bytes.Length);
+				//_cache[internalId] = bytes;
+
+				result.Seek(0, SeekOrigin.Begin);
 				return result;
 			}
 			return null;
