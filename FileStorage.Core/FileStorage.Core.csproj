@@ -1,9 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <Authors>Stanislav Batyrgareev</Authors>
-    <Version>6.0.13</Version>
+    <Version>3.1.55</Version>
     <AssemblyVersion></AssemblyVersion>
     <Description>FileStorage.Core is Hierarchical file storage</Description>
     <Copyright>Stanislav Batyrgareev</Copyright>

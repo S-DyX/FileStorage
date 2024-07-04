@@ -175,10 +175,14 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			}
 			return "";
 		}
-
-		public long GetSize(string externalFileId, string storageName)
-		{
-			var fileId = externalFileId.GetSha1Hash();
+		/// <summary>
+		/// Return file size
+		/// </summary>
+		/// <param name="fileId">internal FS id</param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
+		public long GetSize(string fileId, string storageName)
+		{ 
 			var tcpCommonMessage = new TcpCommonMessage()
 			{
 				RequestId = Guid.NewGuid().ToString(),
@@ -196,7 +200,12 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			}
 			return 0;
 		}
-
+		/// <summary>
+		/// Is exists on FS
+		/// </summary> 
+		/// <param name="externalFileId">this is file id from your system</param> 
+		/// <param name="storageName"></param>
+		/// <returns></returns>
 		public bool IsExists(string externalFileId, string storageName)
 		{
 			var fileId = externalFileId.GetSha1Hash();
@@ -205,11 +214,10 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		}
 
 
-
 		/// <summary>
-		/// 
-		/// </summary> 
-		/// <param name="externalFileId"></param>
+		/// Is exists by externalId
+		/// </summary>
+		/// <param name="externalFileId">id from your system</param>
 		/// <param name="storageName"></param>
 		/// <returns></returns>
 		public bool IsExistsByExternalId(string externalFileId, string storageName)
@@ -232,12 +240,25 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			}
 			return false;
 		}
-
-		public byte[] GetBytes(string id, long offset, long size, string storageName)
+		/// <summary>
+		/// Partial read 
+		/// </summary>
+		/// <param name="fileId">internal FS id</param>
+		/// <param name="offset"></param>
+		/// <param name="size"></param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
+		public byte[] GetBytes(string fileId, long offset, long size, string storageName)
 		{
 			throw new NotImplementedException();
 		}
-
+		/// <summary>
+		/// Save stream to FS
+		/// </summary> 
+		/// <param name="externalFileId">this is file id from your system</param> 
+		/// <param name="storageName"></param>
+		/// <param name="stream"></param>
+		/// <param name="sessionId"></param>
 		public void Write(string externalFileId, string storageName, Stream stream, string sessionId)
 		{
 			var length = 64000;
@@ -253,14 +274,15 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 				Write(fileId, storageName, buffer.Take(byteCount).ToArray(), close, sessionId);
 			}
 		}
-
-		public void Read(string externalFileId, string storageName, Stream stream)
-		{
-			var fileId = externalFileId.GetSha1Hash();
-
-			Read(fileId, storageName, stream);
-
-		}
+		
+		/// <summary>
+		/// Partial read 
+		/// </summary> 
+		/// <param name="externalFileId">this is file id from your system</param> 
+		/// <param name="offset"></param>
+		/// <param name="size"></param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
 		public byte[] Read(string externalFileId, long offset, long size, string storageName)
 		{
 			if (size == 0)
@@ -286,10 +308,14 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 
 
 
-		}
-		public bool Delete(string externalFileId, string storageName)
+		}/// <summary>
+		/// Delete file from FS
+		/// </summary>
+		/// <param name="fileId">internal FS id</param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
+		public bool Delete(string fileId, string storageName)
 		{
-			var fileId = externalFileId.GetSha1Hash();
 			var tcpCommonMessage = new TcpCommonMessage()
 			{
 				RequestId = Guid.NewGuid().ToString(),
@@ -306,41 +332,24 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 				return true;
 			}
 			return false;
-		}
+		} 
+
 		/// <summary>
-		/// 50 Мб
+		/// Method return read only stream
 		/// </summary>
-		private static int _maxLen = 1024 * 1024 * 20;
-		public Stream GetStream(string externalFileId, string name)
+		/// <param name="externalFileId">this is file id from your system</param> 
+		/// <param name="storageName">Storage name</param>
+		/// <returns></returns>
+		public Stream GetStream(string externalFileId, string storageName)
 		{
-			if (IsExists(externalFileId, name))
+			var fileId = GetIdByExternal(externalFileId);
+			if (Exists(fileId, storageName))
 			{
+				var size = GetSize(fileId, storageName);
 
-				var size = GetSize(externalFileId, name);
+				var result = new InternalFileStream(Read, size, externalFileId, storageName);
 
-				var result = new MixedMemoryStream();
-				var len = size / 10;
-				if (len > 1024 * 1024 * 20)
-					len = _maxLen;
-				var buffer = new byte[len];
-				var offset = 0l;
 
-				while (offset < size)
-				{
-					buffer = Read(externalFileId, offset, buffer.Length, name);
-					if (buffer == null)
-						break;
-					offset += buffer.Length;
-					result.Write(buffer, 0, buffer.Length);
-				}
-
-				result.Seek(0, SeekOrigin.Begin);
-				//Save to cache
-				//var bytes = new byte[result.Length];
-				//result.Read(bytes, 0, bytes.Length);
-				//_cache[internalId] = bytes;
-
-				result.Seek(0, SeekOrigin.Begin);
 				return result;
 			}
 			return null;

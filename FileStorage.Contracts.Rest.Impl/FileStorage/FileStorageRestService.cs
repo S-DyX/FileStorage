@@ -1,12 +1,10 @@
 ﻿using Newtonsoft.Json;
-using Service.Registry.Common;
+using Service.Registry.Common.Entities;
 using Service.Registry.Utils;
-using System;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
-using Service.Registry.Common.Entities;
 
 namespace FileStorage.Contracts.Rest.Impl.FileStorage
 {
@@ -31,23 +29,14 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 
 		/// <summary>
 		/// Save stream to FS
-		/// </summary>
-		/// <param name="externalFolderId">this is folder id from your system</param>
+		/// </summary> 
 		/// <param name="externalFileId">this is file id from your system</param> 
 		/// <param name="storageName"></param>
 		/// <param name="stream"></param>
 		/// <param name="sessionId"></param>
 		void Write(string externalFileId, string storageName, Stream stream, string sessionId);
 
-		/// <summary>
-		/// Load data from FS to Stream
-		/// </summary>
-		/// <param name="externalFileId">this is file id from your system</param> 
-		/// <param name="storageName"></param>
-		/// <param name="stream"></param>
-		void Read(string externalFileId, string storageName, Stream stream);
-
-
+	
 
 		/// <summary>
 		/// Partial read 
@@ -59,13 +48,6 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <returns></returns>
 		byte[] Read(string externalFileId, long offset, long size, string storageName);
 
-		/// <summary>
-		/// Return memory stream
-		/// </summary> 
-		/// <param name="externalFileId">this is file id from your system</param> 
-		/// <param name="name"></param>
-		/// <returns></returns>
-		Stream GetStream(string externalFileId, string name);
 	}
 
 	/// <summary>
@@ -73,6 +55,13 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 	/// </summary>
 	public interface IFileStorageRestService
 	{
+		/// <summary>
+		/// Method return read only stream
+		/// </summary>
+		/// <param name="externalFileId">this is file id from your system</param> 
+		/// <param name="storageName">Storage name</param>
+		/// <returns></returns>
+		Stream GetStream(string externalFileId, string storageName);
 		/// <summary>
 		/// Return internal id from FS by externalId
 		/// </summary>
@@ -140,10 +129,10 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <summary>
 		/// Is exists by externalId
 		/// </summary>
-		/// <param name="externalId">id from your system</param>
+		/// <param name="externalFileId">id from your system</param>
 		/// <param name="storageName"></param>
 		/// <returns></returns>
-		bool IsExistsByExternalId(string externalId, string storageName);
+		bool IsExistsByExternalId(string externalFileId, string storageName);
 
 		/// <summary>
 		/// Partial read 
@@ -198,6 +187,26 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 
 		#region V1
 
+		/// <summary>
+		/// Method return read only stream
+		/// </summary>
+		/// <param name="externalFileId">this is file id from your system</param> 
+		/// <param name="storageName">Storage name</param>
+		/// <returns></returns>
+		public Stream GetStream(string externalFileId, string storageName)
+		{
+			var fileId = GetIdByExternal(externalFileId);
+			if (Exists(fileId, storageName))
+			{
+				var size = GetSize(fileId, storageName);
+
+				var result = new InternalFileStream(GetBytes, size, fileId, storageName);
+
+
+				return result;
+			}
+			return null;
+		}
 		public string GetIdByExternal(string externalId)
 		{
 			var client = ClientFactory.CreateClient();
@@ -245,32 +254,32 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 
 		/// <summary>
 		/// <see cref="IFileStorageRestService.SaveBytes(string, byte[], string, string)"/>
-		/// </summary>
-		/// <param name="id"></param>
+		/// /// </summary>
+		/// <param name="fileId">internal FS id</param>
 		/// <param name="bytes"></param>
 		/// <param name="storageName"></param>
 		/// <param name="sessionId"></param>
-		public void SaveBytes(string id, byte[] bytes, string storageName, string sessionId)
+		public void SaveBytes(string fileId, byte[] bytes, string storageName, string sessionId)
 		{
-			Write(id, bytes, storageName, true, sessionId);
+			Write(fileId, bytes, storageName, true, sessionId);
 		}
 
 		/// <summary>
 		/// <see cref="IFileStorageRestService.Write(string, byte[], string, bool, string)"/>
 		/// </summary>
-		/// <param name="id"></param>
+		/// <param name="fileId">internal FS id</param>
 		/// <param name="bytes"></param>
 		/// <param name="storageName"></param>
 		/// <param name="close"></param>
 		/// <param name="sessionId"></param>
-		private void Write(string id, byte[] bytes, string storageName, bool close, string sessionId)
+		private void Write(string fileId, byte[] bytes, string storageName, bool close, string sessionId)
 		{
 			var client = ClientFactory.CreateClient();
 			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
 			var url = $"{_apiV1}savebytes?name={storageName}";
 			var request = new SaveBytesRequest
 			{
-				Id = id,
+				Id = fileId,
 				Bytes = bytes,
 				Close = close,
 				SessionId = sessionId
@@ -299,7 +308,12 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			//	client.UploadData(url, "POST", obj);
 			//}
 		}
-
+		/// <summary>
+		/// Return exist id in FS by externalId
+		/// </summary>
+		/// <param name="externalId">id from your system</param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
 		public string GetExistIdByExternal(string externalId, string storageName)
 		{
 			var client = ClientFactory.CreateClient();
@@ -336,12 +350,17 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			//		: null;
 			//}
 		}
-
-		public long GetSize(string id, string storageName)
+		/// <summary>
+		/// Return file size
+		/// </summary>
+		/// <param name="fileId">internal FS id</param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
+		public long GetSize(string fileId, string storageName)
 		{
 			var client = ClientFactory.CreateClient();
 			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}size?Id={id}";
+			var address = $"{_apiV1}size?Id={fileId}";
 			var responseJson = RunSyncUtil.RunSync(() =>
 				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
 			var response = JsonConvert.DeserializeAnonymousType(responseJson, new { Size = default(long) });
@@ -360,12 +379,17 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			//	return response.Size;
 			//}
 		}
-
-		public bool Exists(string hash, string storageName)
+		/// <summary>
+		/// Is exists on FS
+		/// </summary>
+		/// <param name="fileId">internal FS id</param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
+		public bool Exists(string fileId, string storageName)
 		{
 			var client = ClientFactory.CreateClient();
 			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}exists?id={hash}";
+			var address = $"{_apiV1}exists?id={fileId}";
 			var responseJson = RunSyncUtil.RunSync(() =>
 				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
 			var response = JsonConvert.DeserializeAnonymousType(responseJson, new { Exists = default(bool) });
@@ -382,7 +406,12 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 
 			//	return response.Exists;
 		}
-
+		/// <summary>
+		/// Is exists by externalId
+		/// </summary>
+		/// <param name="externalId">id from your system</param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
 		public bool IsExistsByExternalId(string externalId, string storageName)
 		{
 			var client = ClientFactory.CreateClient();
@@ -417,11 +446,11 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <summary>
 		/// <see cref="IFileStorageRestService.SaveBytes(string, string , Stream , string)"/>
 		/// </summary>
-		/// <param name="id">FS internal id </param>
+		/// <param name="fileId">FS internal id </param>
 		/// <param name="storageName"></param>
 		/// <param name="stream"></param>
 		/// <param name="sessionId"></param>
-		public void SaveBytes(string id, string storageName, Stream stream, string sessionId)
+		public void SaveBytes(string fileId, string storageName, Stream stream, string sessionId)
 		{
 			var length = 11000;
 
@@ -432,16 +461,21 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			while (!close && (byteCount = stream.Read(buffer, 0, buffer.Length)) > 0)
 			{
 				close = length > byteCount;
-				Write(id, buffer.Take(byteCount).ToArray(), storageName, close, sessionId);
+				Write(fileId, buffer.Take(byteCount).ToArray(), storageName, close, sessionId);
 			}
 		}
-
-		public void WriteToStream(string id, string storageName, Stream stream)
+		/// <summary>
+		/// Load data from FS to Stream
+		/// </summary>
+		/// <param name="fileId">internal FS id</param>
+		/// <param name="storageName"></param>
+		/// <param name="stream"></param>
+		public void WriteToStream(string fileId, string storageName, Stream stream)
 		{
 			const int constSize = 100000;
 			long offset = 0;
 			long size = constSize;
-			var totalLen = GetSize(id, storageName);
+			var totalLen = GetSize(fileId, storageName);
 			if (totalLen == 0)
 				return;
 			byte[] bytes;
@@ -452,21 +486,30 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 					size = totalLen - offset;
 				}
 
-				bytes = GetBytes(id, offset, size, storageName);
+				bytes = GetBytes(fileId, offset, size, storageName);
 				if (bytes == null)
 					return;
 				stream.Write(bytes, 0, bytes.Length);
 				offset += bytes.Length;
 			} while (offset < totalLen);
 		}
-		public byte[] GetBytes(string id, long offset, long size, string storageName)
+
+		/// <summary>
+		/// Partial read 
+		/// </summary>
+		/// <param name="fileId">internal FS id</param>
+		/// <param name="offset"></param>
+		/// <param name="size"></param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
+		public byte[] GetBytes(string fileId, long offset, long size, string storageName)
 		{
 			if (size == 0)
 				return null;
 
 			var client = ClientFactory.CreateClient();
 			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var url = $"{_apiV1}getbytes?id={id}&offset={offset}&count={size}&name={storageName}";
+			var url = $"{_apiV1}getbytes?id={fileId}&offset={offset}&count={size}&name={storageName}";
 			var str = RunSyncUtil.RunSync(() => client.GetStringAsync(url));
 			var data = JsonConvert.DeserializeObject<GetBytesResult>(str);
 			return data.Bytes;
@@ -482,11 +525,17 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			//}
 
 		}
-		public bool Delete(string id, string storageName)
+		/// <summary>
+		/// Delete file from FS
+		/// </summary>
+		/// <param name="fileId">internal FS id</param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
+		public bool Delete(string fileId, string storageName)
 		{
 			var client = ClientFactory.CreateClient();
 			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}delete?Id={id}";
+			var address = $"{_apiV1}delete?Id={fileId}";
 			var responseJson = RunSyncUtil.RunSync(() =>
 				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
 			var response = JsonConvert.DeserializeAnonymousType(responseJson, new

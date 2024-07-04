@@ -3,26 +3,24 @@ using System.IO;
 
 namespace FileStorage.Contracts.Rest.Impl.FileStorage
 {
-	internal sealed class InternalFolderStream : Stream
+	internal sealed class InternalFileStream : Stream
 	{
-		public InternalFolderStream()
+		public InternalFileStream()
 		{
 		}
 
-		public InternalFolderStream(Func<string, string, long, long, string, byte[]> func, long length, string externalFolderId, string externalFileId, string storageName)
+		public InternalFileStream(Func<string, long, long, string, byte[]> func, long length,  string fileId, string storageName)
 		{
 			_func = func;
-			_length = length;
-			_externalFolderId = externalFolderId;
-			_externalFileId = externalFileId;
+			_length = length; 
+			_fileId = fileId;
 			_storageName = storageName;
 		}
 
-		private readonly Func<string, string, long, long, string, byte[]> _func;
+		private readonly Func<string, long, long, string, byte[]> _func;
 		private long _length;
-		private long _position;
-		private readonly string _externalFolderId;
-		private readonly string _externalFileId;
+		private long _position; 
+		private readonly string _fileId;
 		private readonly string _storageName;
 
 		public override void Flush()
@@ -36,7 +34,7 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			{
 				count = (int)(_length - offset);
 			}
-			var tmp = _func.Invoke(_externalFolderId, _externalFileId, _position, count, _storageName);
+			var tmp = _func.Invoke(_fileId, _position, count, _storageName);
 			_position += count;
 			tmp.CopyTo(buffer, 0);
 			return tmp.Length;

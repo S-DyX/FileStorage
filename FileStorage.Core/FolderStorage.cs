@@ -174,6 +174,7 @@ namespace FileStorage.Core
 					{
 
 						save.Add(file);
+						return;
 					}
 				}
 
