@@ -11,10 +11,10 @@ namespace FileStorage.Core.Interfaces
 {
 	public enum EventType
 	{
-		Unknown,
-		FileSave,
-		FileLoad,
-		FileDelete,
+		Unknown = 0,
+		FileSave = 1,
+		FileLoad = 2,
+		FileDelete = 3,
 	}
 
 
@@ -136,11 +136,11 @@ namespace FileStorage.Core.Interfaces
 			var rootLogDir = GetRootLogDir();
 			lock (_syncSave)
 			{
-				
+
 				var files = Directory.GetFiles(rootLogDir, "*.log", SearchOption.AllDirectories);
 				foreach (var file in files)
 				{
-					File.Move(file,$"{file}_{Guid.NewGuid()}.old");
+					File.Move(file, $"{file}_{Guid.NewGuid()}.old");
 				}
 				if (eventMessages.Any())
 					Save(eventMessages, DateTime.UtcNow);
