@@ -677,7 +677,7 @@ namespace FileStorage.Core
 
 
 				_log.Write(EventType.FileSave, fileInfo.Name, fileInfo.Length, toId.FolderId);
-				_log.Write(EventType.FileDelete, fileInfoFrom.Name, fileInfoFrom.Length, fromId.FolderId);
+				_log.Write(EventType.FileMoveDelete, fileInfoFrom.Name, fileInfoFrom.Length, fromId.FolderId);
 			}
 
 		}

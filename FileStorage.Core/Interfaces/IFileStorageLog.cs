@@ -15,6 +15,7 @@ namespace FileStorage.Core.Interfaces
 		FileSave = 1,
 		FileLoad = 2,
 		FileDelete = 3,
+		FileMoveDelete = 4,
 	}
 
 

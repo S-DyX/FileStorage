@@ -1,13 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using FileStorage.Core.Interfaces;
+using FileStorage.Core.Interfaces.Settings;
+using Newtonsoft.Json;
+using System;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading.Tasks;
-using FileStorage.Core.Interfaces;
-using FileStorage.Core.Interfaces.Settings;
-using Newtonsoft.Json;
+using System.Threading;
 
 namespace FileStorage.Contracts.Impl.Connections
 {
@@ -16,7 +15,7 @@ namespace FileStorage.Contracts.Impl.Connections
 		private readonly IFileStorageSettings _settings;
 		private readonly ITcpClientRegistry _clientRegistry;
 		private readonly IMessageProcessingService _messageProcessingService;
-		private readonly ILocalLogger _localLogger; 
+		private readonly ILocalLogger _localLogger;
 		private readonly TcpListener _serverSocket;
 		private bool _isRun;
 		public TcpCommandServer(IFileStorageSettings settings,
@@ -28,7 +27,7 @@ namespace FileStorage.Contracts.Impl.Connections
 			_clientRegistry = clientRegistry;
 			_messageProcessingService = messageProcessingService;
 			_localLogger = localLogger;
-			_serverSocket = new TcpListener(IPAddress.Parse(_settings.Connection.Tcp.Address), _settings.Connection.Tcp.Port); 
+			_serverSocket = new TcpListener(IPAddress.Parse(_settings.Connection.Tcp.Address), _settings.Connection.Tcp.Port);
 			_isRun = true;
 		}
 
@@ -36,9 +35,9 @@ namespace FileStorage.Contracts.Impl.Connections
 		private bool IsSteelRun()
 		{
 			return _isRun;
-		} 
+		}
 
-	 
+
 		public void Start()
 		{
 			if (!_isRun)
@@ -53,12 +52,15 @@ namespace FileStorage.Contracts.Impl.Connections
 		private void StartTcpListener()
 		{
 			_serverSocket.Start();
+			var callStart = false;
 			_localLogger?.Info($"Start tcp server {_settings.Connection.Tcp.Address}:{_settings.Connection.Tcp.Port}");
 			while (_isRun)
 			{
 				try
 				{
-					var clientSocket = _serverSocket.AcceptTcpClient();
+					if (callStart)
+						_serverSocket.Start();
+					var clientSocket = _serverSocket.AcceptTcpClientAsync().Result;
 					clientSocket.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
 
 					_localLogger?.Info($"AcceptTcpClient {clientSocket.Client.RemoteEndPoint}");
@@ -72,7 +74,7 @@ namespace FileStorage.Contracts.Impl.Connections
 
 					var response = _messageProcessingService.Process(bytesFrom.Take(receivedSize).ToArray(), null);
 					_localLogger?.Info($"Tcp client processed: {clientSocket.Client.RemoteEndPoint}");
-					
+
 
 					TcpClientContainerBase tcpChatClient = null;
 					var commonRobotMessage = new TcpCommonMessage()
@@ -84,7 +86,7 @@ namespace FileStorage.Contracts.Impl.Connections
 					switch (response.Type)
 					{
 
-						case TcpMessageType.OpenConnection: 
+						case TcpMessageType.OpenConnection:
 							tcpChatClient = _clientRegistry.AddCommand(clientSocket, stream, string.Empty,
 								_messageProcessingService);
 							break;
@@ -103,9 +105,20 @@ namespace FileStorage.Contracts.Impl.Connections
 						clientSocket.Close();
 					}
 				}
+				catch (InvalidOperationException ioe)
+				{
+					_localLogger?.Error(ioe.Message, ioe);
+					if (ioe.Message.Contains("You must call the Start()"))
+					{
+						callStart = true;
+						Thread.Sleep(500);
+
+					}
+				}
 				catch (Exception e)
 				{
 					_localLogger?.Error(e.Message, e);
+					Thread.Sleep(20);
 				}
 			}
 		}
