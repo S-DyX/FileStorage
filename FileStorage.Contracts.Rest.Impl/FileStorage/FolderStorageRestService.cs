@@ -200,7 +200,7 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			var close = false;
 			while (!close && (byteCount = stream.Read(buffer, 0, buffer.Length)) > 0)
 			{
-				close = length > byteCount;
+				close = length >= byteCount;
 				Write(externalFolderId, externalFileId, storageName, buffer.Take(byteCount).ToArray(), close, sessionId);
 			}
 		}
