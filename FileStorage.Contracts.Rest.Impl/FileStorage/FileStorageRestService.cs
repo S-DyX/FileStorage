@@ -460,7 +460,10 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			var close = false;
 			while (!close && (byteCount = stream.Read(buffer, 0, buffer.Length)) > 0)
 			{
-				close = length >= byteCount;
+				close = length > byteCount;
+				if (len == stream.Position)
+					close = length > byteCount;
+					 
 				Write(fileId, buffer.Take(byteCount).ToArray(), storageName, close, sessionId);
 			}
 		}

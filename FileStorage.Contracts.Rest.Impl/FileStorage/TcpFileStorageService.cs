@@ -261,7 +261,7 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <param name="sessionId"></param>
 		public void Write(string externalFileId, string storageName, Stream stream, string sessionId)
 		{
-			var length = 64000;
+			var length = 64001;
 
 			var byteCount = 0;
 			var buffer = new byte[length];
@@ -271,6 +271,8 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			while (!close && (byteCount = stream.Read(buffer, 0, buffer.Length)) > 0)
 			{
 				close = length > byteCount;
+				if (len == stream.Position)
+					close = length > byteCount;
 				Write(fileId, storageName, buffer.Take(byteCount).ToArray(), close, sessionId);
 			}
 		}

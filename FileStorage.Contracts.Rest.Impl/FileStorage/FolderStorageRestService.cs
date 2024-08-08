@@ -193,14 +193,16 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			var len = stream.Length;
 			if (len == 0)
 				return;
-			var length = 64000;
+			var length = 64001;
 
 			var byteCount = 0;
 			var buffer = new byte[length];
 			var close = false;
 			while (!close && (byteCount = stream.Read(buffer, 0, buffer.Length)) > 0)
 			{
-				close = length >= byteCount;
+				close = length > byteCount;
+				if (len == stream.Position)
+					close = length > byteCount;
 				Write(externalFolderId, externalFileId, storageName, buffer.Take(byteCount).ToArray(), close, sessionId);
 			}
 		}
