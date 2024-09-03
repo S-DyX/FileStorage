@@ -37,6 +37,8 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 				count = (int)(_length - offset);
 			}
 			var tmp = _func.Invoke(_externalFolderId, _externalFileId, _position, count, _storageName);
+			if (tmp == null)
+				return 0;
 			_position += count;
 			tmp.CopyTo(buffer, 0);
 			return tmp.Length;
