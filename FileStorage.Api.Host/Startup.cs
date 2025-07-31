@@ -99,6 +99,7 @@ namespace FileStorage.Api.Host
 				.RegisterType<MessageProcessingService>()
 				.As<IMessageProcessingService>()
 				.SingleInstance();
+
 			builder
 				.RegisterType<TcpClientRegistry>()
 				.As<ITcpClientRegistry>()

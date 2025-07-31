@@ -7,8 +7,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using File = System.IO.File;
 
 
 namespace FileStorage.Core
@@ -16,7 +18,7 @@ namespace FileStorage.Core
 	/// <summary>
 	/// Hierarchical file storage stored on disk
 	/// </summary>
-	public sealed class FolderStorage : IFolderStorage
+	public sealed class FileStorage : IFileStorage<string>
 	{
 		private readonly string _name;
 		private readonly IFileStorageSettings _settings;
@@ -28,11 +30,11 @@ namespace FileStorage.Core
 		/// Ctor
 		/// </summary>
 		/// <param name="name">Name of root directory</param>
-		public FolderStorage(string name)
+		public FileStorage(string name)
 			: this(name, new FileStorageSettings(), new FileStorageVirtual(), null)
 		{ }
 
-		public FolderStorage(string name, IFileStorageSettings settings, IFileStorageVirtual fileStorageVirtual, ILocalLogger localLogger)
+		public FileStorage(string name, IFileStorageSettings settings, IFileStorageVirtual fileStorageVirtual, ILocalLogger localLogger)
 		{
 			_name = name;
 			_settings = settings;
@@ -40,7 +42,7 @@ namespace FileStorage.Core
 			_localLogger = localLogger;
 			_rootDirectory = GetRoot(_settings, name);
 			_log = new FileStorageLog(_rootDirectory);
-			//Task.Factory.StartNew(() => _fileStorageVirtual.GetCount(_rootDirectory));
+			Task.Factory.StartNew(() => _fileStorageVirtual.GetCount(_rootDirectory));
 		}
 
 		public static string GetRoot(IFileStorageSettings settings, string name)
@@ -53,16 +55,15 @@ namespace FileStorage.Core
 		/// </summary>
 		/// <param name="file"></param>
 		/// <returns></returns>
-		public string Save(FileContainer file)
+		public async Task<string> SaveAsync(FileContainer file)
 		{
-			var info = new FolderStorageInfo() { FileId = file.Id, FolderId = file.Id };
-			Save(file.Stream, info);
+			SaveAsync(file.Stream, file.Id);
 			return file.Id;
 		}
 
-		void SaveStreamToFile(Stream stream, FolderStorageInfo info)
+		async Task SaveStreamToFileAsync(Stream stream, string fileName)
 		{
-			var fileName = GetFullFileName(info, true);
+
 			var fileInfo = new FileInfo(fileName);
 			if (fileInfo?.Directory != null)
 			{
@@ -71,10 +72,10 @@ namespace FileStorage.Core
 				{
 					using (var outstream = File.Open(tempFileName, FileMode.Create, FileAccess.Write))
 					{
-						StreamHelper.CopyStream(stream, outstream);
+						await stream.CopyToAsync(outstream);
 						outstream.Close();
 					}
-					MoveFile(fileName, tempFileName, fileInfo, info);
+					MoveFile(fileName, tempFileName, fileInfo);
 				}
 				catch
 				{
@@ -87,22 +88,22 @@ namespace FileStorage.Core
 			}
 		}
 
-		private void MoveFile(string fileNameTo, string filenameFrom, FileInfo fileInfo, FolderStorageInfo info)
+		private void MoveFile(string fileNameTo, string filenameFrom, FileInfo fileInfo)
 		{
 			var tmpFileInfo = new FileInfo(filenameFrom);
 			var length = tmpFileInfo.Length;
 			if (!_fileStorageVirtual.Exists(fileNameTo))
 			{
 				_fileStorageVirtual.Move(filenameFrom, fileNameTo);
-				_log.Write(EventType.FileSave, fileInfo.Name, length, info.FolderId);
+				_log.Write(EventType.FileSave, fileInfo.Name, length);
 			}
 			else
 			{
-				if (fileInfo.Length != length)
+				if (fileInfo.Exists && fileInfo.Length != length)
 				{
 					_fileStorageVirtual.Delete(fileInfo.FullName);
 					_fileStorageVirtual.Move(filenameFrom, fileNameTo);
-					_log.Write(EventType.FileSave, fileInfo.Name, length, info.FolderId);
+					_log.Write(EventType.FileSave, fileInfo.Name, length);
 				}
 				else if (_fileStorageVirtual.Exists(filenameFrom))
 				{
@@ -112,19 +113,13 @@ namespace FileStorage.Core
 			}
 		}
 
-
 		/// <summary>
-		/// <see cref="IFolderStorage.SaveToFile(SaveFileRequest)"/>
+		/// <see cref="IFileStorage{TValue}.SaveToFile(SaveFileRequest)"/>
 		/// </summary>
 		/// <param name="request"></param> 
-		public void SaveToFile(SaveFileRequest request)
+		public async Task SaveToFileAsync(SaveFileRequest request)
 		{
-			var info = new FolderStorageInfo()
-			{
-				FileId = request.Id,
-				FolderId = request.FolderId
-			};
-			var fileName = GetFullFileName(info, true);
+			var fileName = GetFullFileName(request.Id, true);
 			var fileInfo = new FileInfo(fileName);
 			//if (fileInfo.Directory.Exists)
 			{
@@ -132,15 +127,14 @@ namespace FileStorage.Core
 				try
 				{
 					var bytes = request.Bytes;
-
 					using (var outstream = File.Open(tempFileName, FileMode.Append))
 					{
-						outstream.Write(bytes, (int)0, bytes.Length);
+						await outstream.WriteAsync(bytes, (int)0, bytes.Length);
 						outstream.Close();
 					}
 					if (request.Close)
 					{
-						MoveFile(fileName, tempFileName, fileInfo, info);
+						MoveFile(fileName, tempFileName, fileInfo);
 					}
 				}
 				catch
@@ -158,69 +152,24 @@ namespace FileStorage.Core
 		/// <see cref="IFileStorage{TValue}.ClearTtl(DateTime)"/>
 		/// </summary>
 		/// <param name="date"></param>
-		public void ClearTtl(DateTime date)
+		public async Task ClearTtlAsync(DateTime date)
 		{
 
-			; _localLogger?.Info($"TTL Start:{date}");
 			var files = _log.GetAll().OrderBy(x => x.Time).ToList();
-			var deleted = files.Where(x => x.Type == EventType.FileDelete).ToList();
 			var save = new List<EventMessage>();
-			var foundAny = false;
-			Parallel.ForEach(files, file =>
+			foreach (var file in files)
 			{
 				if (file.Time > date)
 				{
-					lock (save)
+					//lock (save)
 					{
 
 						save.Add(file);
-						return;
 					}
 				}
-
-				foundAny = true;
-				switch (file.Type)
-				{
-					case EventType.FileDelete:
-					case EventType.Unknown:
-						return;
-						break;
-				}
-
-				if (deleted.FirstOrDefault(x => x.Id == file.Id && x.Time > file.Time) != null)
-				{
-					return;
-				}
-
-				//if (string.IsNullOrEmpty(file.FolderId))
-				//{
-				//	var fileFound = Directory.GetFiles(_rootDirectory, file.Id, SearchOption.AllDirectories)
-				//		.FirstOrDefault();
-
-				//	if (fileFound != null)
-				//	{
-				//		var path = fileFound.Replace(_rootDirectory, "").Replace(file.Id, "")
-				//			.Replace(Path.DirectorySeparatorChar.ToString(), "");
-				//		file.FolderId = path;
-				//	}
-				//}
-
-				if (string.IsNullOrEmpty(file.FolderId))
-				{
-					_localLogger?.Info($"File not found:{file.Id}");
-					return;
-				}
-
-				Delete(new FolderStorageInfo()
-				{
-					FileId = file.Id,
-					FolderId = file.FolderId,
-					StorageName = _name
-				});
-				_localLogger?.Info("TTL:" + file.Id);
-			});
-			if (foundAny)
-				_log.Rewrite(save, DateTime.UtcNow);
+				Delete(file.Id);
+			}
+			_log.Rewrite(save, DateTime.UtcNow);
 			var fs = Directory.GetFiles(_rootDirectory, "*", SearchOption.AllDirectories);
 			foreach (var file in fs)
 			{
@@ -234,12 +183,14 @@ namespace FileStorage.Core
 			}
 		}
 
-		public void Drop()
+		public async Task DropAsync()
 		{
 			_fileStorageVirtual.Drop();
 			Directory.Delete(_rootDirectory, true);
 			_log.Clear();
 			_log = new FileStorageLog(_rootDirectory);
+
+
 		}
 
 		private static string GetTempFileName(string fileName, string sessionId = "")
@@ -247,25 +198,20 @@ namespace FileStorage.Core
 			return $"{fileName}_{sessionId ?? string.Empty}.tmp";
 		}
 
-		public Stream GetWriteStream(FolderStorageInfo info)
-		{
-			throw new NotImplementedException();
-		}
-
 		/// <summary>
-		/// <see cref="IFolderStorage.Append(byte[], FolderStorageInfo)"/>
+		/// <see cref="IFileStorage{TValue}.Append(byte[], string)"/>
 		/// </summary>
 		/// <param name="array"></param>
 		/// <param name="id"></param>
-		public void Append(byte[] array, FolderStorageInfo info)
+		public async Task AppendAsync(byte[] array, string id)
 		{
-			var fullName = GetFullFileName(info, true);
+			var fullName = GetFullFileName(id, true);
 
 			using (var stream = File.Open(fullName, FileMode.Append, FileAccess.Write,
 				FileShare.ReadWrite | FileShare.Delete | FileShare.Read | FileShare.Write))
 			{
-				stream.Write(array, 0, array.Length);
-				stream.Flush(true);
+				await stream.WriteAsync(array, 0, array.Length);
+				await stream.FlushAsync();
 				stream.Close();
 			}
 			if (!_fileStorageVirtual.Exists(fullName))
@@ -276,48 +222,47 @@ namespace FileStorage.Core
 
 
 		/// <summary>
-		/// <see cref="IFolderStorage.Save(byte[], FolderStorageInfo)"/>
+		/// <see cref="IFileStorage{TValue}.Save(byte[], string)"/>
 		/// </summary>
 		/// <param name="array"></param>
 		/// <param name="id"></param>
-		public void Save(byte[] array, FolderStorageInfo info)
+		public async Task SaveAsync(byte[] array, string id)
 		{
 			using (var stream = new MemoryStream())
 			{
-				stream.Write(array, 0, array.Length);
+				stream.WriteAsync(array, 0, array.Length);
 				stream.Flush();
 				stream.Position = 0;
-				Save(stream, info);
+				SaveAsync(stream, id);
 			}
 		}
 
 		/// <summary>
-		/// <see cref="IFolderStorage.Get(string)"/>
+		/// <see cref="IFileStorage{TValue}.Get(string)"/>
 		/// </summary>
 		/// <param name="id"></param>
 		/// <returns></returns>
-		public FileContainer Get(FolderStorageInfo info)
+		public async Task<FileContainer> GetAsync(string id)
 		{
 			return new FileContainer
 			{
-				Id = info.FileId,
-				Stream = GetStream(info)
+				Id = id,
+				Stream = await GetStreamAsync(id)
 			};
 		}
 
 		/// <summary>
-		/// <see cref="IFolderStorage.GetStream(FolderStorageInfo)"/>
+		/// <see cref="IFileStorage{TValue}.GetStream(string)"/>
 		/// </summary>
-		/// <param name="info"></param>
+		/// <param name="id"></param>
 		/// <returns></returns>
-		public Stream GetStream(FolderStorageInfo info)
+		public Task<Stream> GetStreamAsync(string id)
 		{
-			return GetStream(info, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete | FileShare.Read | FileShare.Write);
+			return GetStreamAsync(id, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete | FileShare.Read | FileShare.Write);
 		}
-
-		public Stream GetStream(FolderStorageInfo info, FileMode mode, FileAccess access, FileShare share)
+		public async Task<Stream> GetStreamAsync(string id, FileMode mode, FileAccess access, FileShare share)
 		{
-			var fileName = GetFullFileName(info);
+			var fileName = GetFullFileName(id);
 			if (_fileStorageVirtual.Exists(fileName))
 			{
 				return new FileStream(fileName, mode, access,
@@ -326,57 +271,42 @@ namespace FileStorage.Core
 
 			return null;
 		}
-
 		/// <summary>
-		/// <see cref="IFolderStorage.Delete(string)"/>
+		/// <see cref="IFileStorage{TValue}.Delete(string)"/>
 		/// </summary>
-		/// <param name="info"></param>
+		/// <param name="id"></param>
 		/// <returns></returns>
-		public bool Delete(FolderStorageInfo info)
+		public bool Delete(string id)
 		{
-			var directory = GetDirectory(info);
-			if (string.IsNullOrWhiteSpace(info.FileId))
+			var directory = GetDirectory(id);
+			var fileName = GetFullFileName(id);
+			if (_fileStorageVirtual.Exists(fileName))
 			{
-				_fileStorageVirtual.DeleteDirectory(directory);
+				_fileStorageVirtual.Delete(fileName);
+				if (!Directory.EnumerateFiles(directory).Any() && !Directory.EnumerateDirectories(directory).Any())
+				{
+					_fileStorageVirtual.DeleteDirectory(directory);
+					//Directory.Delete(directory);
+				}
+				_log.Write(new EventMessage()
+				{
+					Type = EventType.FileDelete,
+					Id = id,
+					Time = DateTime.UtcNow
+				});
 				return true;
 			}
-			else
-			{
-				var fileName = GetFullFileName(info);
-				if (_fileStorageVirtual.Exists(fileName))
-				{
-					_fileStorageVirtual.Delete(fileName);
-					if (!Directory.EnumerateFiles(directory).Any() && !Directory.EnumerateDirectories(directory).Any())
-					{
-						_fileStorageVirtual.DeleteDirectory(directory);
-						//Directory.Delete(directory);
-					}
-
-					if (!info.DoNotNeedLog)
-					{
-						_log.Write(new EventMessage()
-						{
-							Type = EventType.FileDelete,
-							Id = info.FileId,
-							Time = DateTime.UtcNow
-						});
-					}
-
-					return true;
-				}
-			}
-
 			return false;
 		}
 		/// <summary>
-		/// <see cref="IFolderStorage.DeleteTemp(FolderStorageInfo)"/>
+		/// <see cref="IFileStorage{TValue}.DeleteTemp(string)"/>
 		/// </summary>
-		/// <param name="info"></param>
+		/// <param name="id"></param>
 		/// <returns></returns>
-		public bool DeleteTemp(FolderStorageInfo info)
+		public bool DeleteTemp(string id)
 		{
-			var fileName = GetFullFileName(info);
-			var fileNameTmp = GetTempFileName(fileName);
+			var fileName = GetFullFileName(id);
+			var fileNameTmp = GetTempFileName(id);
 			if (_fileStorageVirtual.Exists(fileNameTmp))
 			{
 				_fileStorageVirtual.Delete(fileNameTmp);
@@ -386,30 +316,26 @@ namespace FileStorage.Core
 		}
 
 		/// <summary>
-		/// <see cref="IFolderStorage.Exists(FolderStorageInfo)"/>
+		/// <see cref="IFileStorage{TValue}.Exists(string)"/>
 		/// </summary>
-		/// <param name="info"></param>
+		/// <param name="id"></param>
 		/// <returns></returns>
-		public bool Exists(FolderStorageInfo info)
+		public bool Exists(string id)
 		{
-			var fileName = GetFullFileName(info);
+			var fileName = GetFullFileName(id);
 			return _fileStorageVirtual.Exists(fileName);
 		}
 
-		private string GetDirectory(FolderStorageInfo info)
+		private string GetDirectory(string id)
 		{
 			var depth = _settings.Depth;
 
-			return GetDirectory(info, depth);
+			return GetDirectory(id, depth);
 		}
 
-		private string GetDirectory(FolderStorageInfo info, int depth)
+		private string GetDirectory(string id, int depth)
 		{
-			var id = info.FolderId;
-			if (id == null)
-				throw new ArgumentNullException("FolderId");
-			if (info.FileId == null)
-				throw new ArgumentNullException("FileId");
+			if (id == null) throw new ArgumentNullException("id");
 			var length = _settings.ElementsCount > id.Length ? id.Length : _settings.ElementsCount;
 			var pathSb = new StringBuilder(_rootDirectory.Length + id.Length * 2);
 			//var pathSb = new StringBuilder();
@@ -431,7 +357,7 @@ namespace FileStorage.Core
 						break;
 					}
 				}
-				var length1 = id.Length - depth;
+				var length1 = length - depth;
 				if (length1 > 0)
 				{
 					var directorySeparatorChar = Path.DirectorySeparatorChar.ToString();
@@ -456,7 +382,7 @@ namespace FileStorage.Core
 		/// </summary>
 		/// <param name="oldDepth"></param>
 		/// <param name="newDepth"></param>
-		public void ChangeDepthDirectory(int oldDepth, int newDepth)
+		public async Task ChangeDepthDirectoryAsync(int oldDepth, int newDepth)
 		{
 			var directories = Directory.GetDirectories(_rootDirectory, "*", SearchOption.TopDirectoryOnly);
 			foreach (var diretory in directories)
@@ -467,11 +393,7 @@ namespace FileStorage.Core
 					var files = directoryInfo.GetFiles();
 					foreach (var file in files)
 					{
-						var newDirectoryName = GetDirectory(new FolderStorageInfo()
-						{
-							FolderId = file.Directory.Name,
-							FileId = file.Name
-						}, newDepth);
+						var newDirectoryName = GetDirectory(file.Name, newDepth);
 						_fileStorageVirtual.AddDirectory(newDirectoryName, true);
 						var destFileName = Path.Combine(newDirectoryName, file.Name);
 						_fileStorageVirtual.Move(file.FullName, destFileName);
@@ -499,7 +421,7 @@ namespace FileStorage.Core
 		/// <param name="offset"></param>
 		/// <param name="count"></param>
 		/// <returns></returns>
-		public List<string> GetIds(long offset, int count)
+		public async Task<List<string>> GetIdsAsync(long offset, int count)
 		{
 			var result = new List<string>();
 
@@ -541,9 +463,9 @@ namespace FileStorage.Core
 		//private DateTime _lastRefreshTime = DateTime.UtcNow.AddDays(-1);
 
 		/// <summary>
-		///  <see cref="IFolderStorage.RefreshLog()"/>
+		///  <see cref="IFileStorage{TValue}.RefreshLog()"/>
 		/// </summary>
-		public void RefreshLog()
+		public async Task RefreshLogAsync()
 		{
 			var directories = Directory.GetDirectories(_rootDirectory);
 			RefreshSub(directories);
@@ -557,7 +479,7 @@ namespace FileStorage.Core
 		//}
 
 		/// <summary>
-		///  <see cref="IFolderStorage.GetLog(DateTime, int)"/>
+		///  <see cref="IFileStorage{TValue}.GetLog(DateTime, int)"/>
 		/// </summary>
 		/// <param name="time"></param>
 		/// <param name="take"></param>
@@ -568,13 +490,13 @@ namespace FileStorage.Core
 		}
 
 		/// <summary>
-		/// <see cref="IFolderStorage.GetLogDateById(string)"/>
+		/// <see cref="IFileStorage{TValue}.GetLogDateById(string)"/>
 		/// </summary>
 		/// <param name="id"></param>
 		/// <returns></returns>
-		public DateTime? GetLogDateById(FolderStorageInfo info)
+		public DateTime? GetLogDateById(string id)
 		{
-			return _log.GetDateById(info.FileId);
+			return _log.GetDateById(id);
 		}
 
 		private void RefreshSub(string[] directories)
@@ -639,21 +561,21 @@ namespace FileStorage.Core
 		}
 
 		/// <summary>
-		/// <see cref="IFolderStorage.GetFullFileName(FolderStorageInfo)"/>
+		/// <see cref="IFileStorage{TValue}.GetFullFileName(string)"/>
 		/// </summary>
-		/// <param name="info"></param>
+		/// <param name="id"></param>
 		/// <returns></returns>
-		public string GetFullFileName(FolderStorageInfo info)
+		public string GetFullFileName(string id)
 		{
-			return GetFullFileName(info, false);
+			return GetFullFileName(id, false);
 		}
 
 		/// <summary>
-		/// <see cref="IFolderStorage.Move(FolderStorageInfo, FolderStorageInfo)"/>
+		/// <see cref="IFileStorage{TValue}.Move(string, string)"/>
 		/// </summary>
 		/// <param name="fromId"></param>
 		/// <param name="toId"></param>
-		public void Move(FolderStorageInfo fromId, FolderStorageInfo toId)
+		public async Task MoveAsync(string fromId, string toId)
 		{
 			if (Exists(fromId))
 			{
@@ -676,21 +598,22 @@ namespace FileStorage.Core
 				_fileStorageVirtual.Delete(fileNameFrom);
 
 
-				_log.Write(EventType.FileSave, fileInfo.Name, fileInfo.Length, toId.FolderId);
-				_log.Write(EventType.FileMoveDelete, fileInfoFrom.Name, fileInfoFrom.Length, fromId.FolderId);
+				_log.Write(EventType.FileSave, fileInfo.Name, fileInfo.Length);
+				_log.Write(EventType.FileDelete, fileInfoFrom.Name, fileInfoFrom.Length);
 			}
 
 		}
 		/// <summary>
-		/// <see cref="IFolderStorage.GetSize(FolderStorageInfo)"/>
+		/// <see cref="IFileStorage{TValue}.GetSize(string)"/>
 		/// </summary>
-		/// <param name="info"></param>
+		/// <param name="id"></param>
 		/// <returns></returns>
-		public long GetSize(FolderStorageInfo info)
+		public long GetSize(string id)
 		{
-			var fullName = GetFullFileName(info, false);
+			var fullName = GetFullFileName(id, false);
 			try
 			{
+
 				if (_fileStorageVirtual.Exists(fullName))
 				{
 					var fileInfo = new FileInfo(fullName);
@@ -708,63 +631,94 @@ namespace FileStorage.Core
 		/// <summary>
 		/// 
 		/// </summary>
-		/// <param name="info"></param> 
+		/// <param name="id"></param>
 		/// <param name="createDirectory"></param>
 		/// <returns></returns>
-		public string GetFullFileName(FolderStorageInfo info, bool createDirectory)
+		public string GetFullFileName(string id, bool createDirectory)
 		{
-			var directory = GetDirectory(info);
+			var directory = GetDirectory(id);
 			_fileStorageVirtual.AddDirectory(directory, createDirectory);
 
 			//var fileNameTo = Path.Combine(directory, id);
-			var fileName = directory + Path.DirectorySeparatorChar + info.FileId;
+			var fileName = directory + Path.DirectorySeparatorChar + id;
 			return fileName;
 		}
 
 		/// <summary>
-		/// <see cref="IFolderStorage.Save(Stream, FolderStorageInfo)"/>
+		/// <see cref="IFileStorage{TValue}.Save(Stream, string)"/>
 		/// </summary>
 		/// <param name="stream"></param>
 		/// <param name="id"></param>
-		public void Save(Stream stream, FolderStorageInfo info)
+		public async Task SaveAsync(Stream stream, string id)
 		{
-
-			SaveStreamToFile(stream, info);
+			var fullName = GetFullFileName(id, true);
+			SaveStreamToFileAsync(stream, fullName);
 		}
 
-
+		public string GetHash(Stream stream)
+		{
+			var hash = string.Empty;
+			using (var output = new MemoryStream())
+			{
+				using (var sha1 = SHA1.Create())
+				{
+					using (var crypto = new CryptoStream(output, sha1, CryptoStreamMode.Write))
+					{
+						stream.CopyTo(crypto);
+						crypto.FlushFinalBlock();
+						hash = sha1.Hash.GetHashString();
+					}
+				}
+			}
+			if (stream.CanRead)
+			{
+				stream.Position = 0;
+			}
+			return hash;
+		}
 		/// <summary>
-		/// <see cref="IFolderStorage.SaveStream(Stream, FolderStorageInfo)"/>
+		/// <see cref="IFileStorage{TValue}.SaveAsHash(Stream)"/>
 		/// </summary>
 		/// <param name="input"></param>
-		/// <param name="info"></param>
 		/// <returns></returns>
-		public FileToken SaveStream(Stream input, FolderStorageInfo info)
+		public async Task<FileToken> SaveAsHashAsync(Stream input)
 		{
-			Save(input, info);
-			return new FileToken(info.FileId, info.FileId, 0);
+			var id = GetHash(input);
+			return await SaveStreamAsync(input, id);
 		}
 
 		/// <summary>
-		/// <see cref="IFolderStorage.DeleteAll()"/>
+		/// <see cref="IFileStorage{TValue}.SaveStream(Stream, string)"/>
 		/// </summary>
-		public void DeleteAll()
+		/// <param name="input"></param>
+		/// <param name="id"></param>
+		/// <returns></returns>
+		public async Task<FileToken> SaveStreamAsync(Stream input, string id)
+		{
+			await SaveAsync(input, id);
+			return new FileToken(id, id, 0);
+		}
+
+		/// <summary>
+		/// <see cref="IFileStorage{TValue}.DeleteAll()"/>
+		/// </summary>
+		public async Task DeleteAllAsync()
 		{
 			Directory.Delete(_rootDirectory);
 		}
 
 		/// <summary>
-		///  <see cref="IFolderStorage.GetRelativeFileName(string)"/>
+		///  <see cref="IFileStorage{TValue}.GetRelativeFileName(string)"/>
 		/// </summary>
 		/// <param name="id"></param>
 		/// <returns></returns>
-		public string GetRelativeFileName(FolderStorageInfo info)
+		public string GetRelativeFileName(string id)
 		{
-			var directory = GetDirectory(info);
+			var directory = GetDirectory(id);
 			var directoryInfo = new DirectoryInfo(directory);
 			if (directoryInfo.Exists)
 			{
-				return Path.Combine(directoryInfo.Name, info.FileId);
+				return Path.Combine(directoryInfo.Name, id);
 			}
 
 			return null;

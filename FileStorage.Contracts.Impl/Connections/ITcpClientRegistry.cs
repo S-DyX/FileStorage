@@ -62,11 +62,11 @@ namespace FileStorage.Contracts.Impl.Connections
 
         public void Stop()
         {
-
-            foreach (var client in _commands)
+            Parallel.ForEach(_commands, client =>
             {
                 client.Stop();
-            }
+            });
+
         }
 
         public void Dispose()

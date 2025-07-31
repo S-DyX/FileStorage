@@ -42,7 +42,7 @@ namespace FileStorage.Core
 			_localLogger = localLogger;
 			_rootDirectory = GetRoot(_settings, name);
 			_log = new FileStorageLog(_rootDirectory);
-			Task.Factory.StartNew(() => _fileStorageVirtual.GetCount(_rootDirectory));
+			//Task.Factory.StartNew(() => _fileStorageVirtual.GetCount(_rootDirectory));
 		}
 
 		public static string GetRoot(IFileStorageSettings settings, string name)

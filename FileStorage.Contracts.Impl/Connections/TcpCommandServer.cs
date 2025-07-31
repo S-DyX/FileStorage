@@ -137,9 +137,12 @@ namespace FileStorage.Contracts.Impl.Connections
 
 
 		public void Dispose()
-		{
-			_clientRegistry?.Dispose();
-			_serverSocket?.Stop();
-		}
+        {
+            _isRun = false;
+            _clientRegistry.Stop();
+            _clientRegistry?.Dispose();
+			_serverSocket?.Stop(); 
+
+        }
 	}
 }

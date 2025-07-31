@@ -11,7 +11,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FileStorage.Api.Host", "Fil
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FileStorage.Contracts.Rest.Impl", "FileStorage.Contracts.Rest.Impl\FileStorage.Contracts.Rest.Impl.csproj", "{ADC25CBF-007E-4D29-9FF0-CC36CEBC5EC7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileStorage.Api.Host.Test", "FileStorage.Api.Host.Test\FileStorage.Api.Host.Test.csproj", "{E7D7BB70-B0B3-4C84-B803-EE597095FACC}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FileStorage.Api.Host.Test", "FileStorage.Api.Host.Test\FileStorage.Api.Host.Test.csproj", "{E7D7BB70-B0B3-4C84-B803-EE597095FACC}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FileStorage.Core.Async", "FileStorage.Core.Async\FileStorage.Core.Async.csproj", "{5847FCF5-765A-4563-9EB3-6DE06DF83BA2}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -61,6 +63,14 @@ Global
 		{E7D7BB70-B0B3-4C84-B803-EE597095FACC}.Release|Any CPU.Build.0 = Release|Any CPU
 		{E7D7BB70-B0B3-4C84-B803-EE597095FACC}.Release|x64.ActiveCfg = Release|Any CPU
 		{E7D7BB70-B0B3-4C84-B803-EE597095FACC}.Release|x64.Build.0 = Release|Any CPU
+		{5847FCF5-765A-4563-9EB3-6DE06DF83BA2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5847FCF5-765A-4563-9EB3-6DE06DF83BA2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5847FCF5-765A-4563-9EB3-6DE06DF83BA2}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5847FCF5-765A-4563-9EB3-6DE06DF83BA2}.Debug|x64.Build.0 = Debug|Any CPU
+		{5847FCF5-765A-4563-9EB3-6DE06DF83BA2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5847FCF5-765A-4563-9EB3-6DE06DF83BA2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5847FCF5-765A-4563-9EB3-6DE06DF83BA2}.Release|x64.ActiveCfg = Release|Any CPU
+		{5847FCF5-765A-4563-9EB3-6DE06DF83BA2}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
