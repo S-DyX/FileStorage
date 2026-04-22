@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace FileStorage.Contracts.Rest.Impl.FileStorage
 {
@@ -18,7 +19,7 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		}
 
 		private readonly Func<string, long, long, string, byte[]> _func;
-		private long _length;
+		private readonly long _length;
 		private long _position; 
 		private readonly string _fileId;
 		private readonly string _storageName;
@@ -82,6 +83,12 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			{
 				_position = value;
 			}
+		}
+
+		public override ValueTask DisposeAsync()
+		{
+
+			return base.DisposeAsync();
 		}
 	}
 }

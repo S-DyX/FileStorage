@@ -7,9 +7,17 @@ using System.Threading.Tasks;
 
 namespace FileStorage.Contracts
 {
+	/// <summary>
+	/// File storage service
+	/// </summary>
 	public interface IFileStorageService
 	{
-
+		/// <summary>
+		/// Return stream from storage by Id
+		/// </summary>
+		/// <param name="id"></param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
 		Stream GetStream(string id, string storageName);
 
 

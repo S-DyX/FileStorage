@@ -1,4 +1,5 @@
-﻿using System;
+﻿using FileStorage.Core.Interfaces;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -87,9 +88,9 @@ namespace FileStorage.Core
 	/// </summary>
 	public sealed class FileStorageVirtual : IFileStorageVirtual
 	{
-		private readonly Dictionary<string, bool> _dictFiles;
+		private readonly Cache<string, string> _dictFiles;
 		private readonly List<string> _files;
-		private readonly Dictionary<string, bool> _dictDirectories;
+		private readonly Cache<string, string> _dictDirectories;
 		private readonly object _syncDirectory = new object();
 		private readonly object _sync = new object();
 
@@ -98,8 +99,8 @@ namespace FileStorage.Core
 		/// </summary>
 		public FileStorageVirtual(int capacity = 20000)
 		{
-			_dictFiles = new Dictionary<string, bool>(capacity);
-			_dictDirectories = new Dictionary<string, bool>(capacity);
+			_dictFiles = new Cache<string, string>(60 * 1440);
+			_dictDirectories = new Cache<string, string>(60 * 1440);
 			_files = new List<string>(capacity);
 
 		}
@@ -112,7 +113,7 @@ namespace FileStorage.Core
 		public bool Exists(string fileName)
 		{
 			var lower = GetKey(fileName);
-			if (_dictFiles.ContainsKey(lower))
+			if (_dictFiles.IsExists(lower))
 				return true;
 
 			var exists = File.Exists(lower) || (lower != fileName && File.Exists(fileName));
@@ -141,10 +142,10 @@ namespace FileStorage.Core
 			lock (_sync)
 			{
 				var lower = GetKey(fileName);
-				if (!_dictFiles.ContainsKey(lower))
+				if (!_dictFiles.IsExists(lower))
 				{
 					_files.Add(lower);
-					_dictFiles.Add(lower, true);
+					_dictFiles.SetValue(lower, lower);
 				}
 			}
 		}
@@ -157,10 +158,10 @@ namespace FileStorage.Core
 			lock (_sync)
 			{
 				var lower = GetKey(fileName);
-				if (_dictFiles.ContainsKey(lower))
+				if (_dictFiles.IsExists(lower))
 				{
 					_files.Remove(lower);
-					_dictFiles.Remove(lower);
+					_dictFiles.Delete(lower);
 				}
 			}
 		}
@@ -179,11 +180,11 @@ namespace FileStorage.Core
 					File.Delete(key);
 				else if (File.Exists(fileName))
 					File.Delete(fileName);
-				if (_dictFiles.ContainsKey(key))
+				if (_dictFiles.IsExists(key))
 				{
 
-					_dictFiles.Remove(key);
-					this._files.Remove(key);
+					_dictFiles.Delete(key);
+					_files.Remove(key);
 				}
 			}
 
@@ -235,7 +236,7 @@ namespace FileStorage.Core
 			}
 			lock (_syncDirectory)
 			{
-				_dictDirectories[directory] = true;
+				_dictDirectories[directory] = directory;
 			}
 		}
 		/// <summary>
@@ -244,7 +245,7 @@ namespace FileStorage.Core
 		/// <param name="directory"></param>
 		public void DeleteDirectory(string directory)
 		{
-			if (_dictDirectories.ContainsKey(directory))
+			if (_dictDirectories.IsExists(directory))
 			{
 				lock (_syncDirectory)
 				{
@@ -258,8 +259,8 @@ namespace FileStorage.Core
 						Directory.Delete(directory);
 					}
 
-					if (_dictFiles.ContainsKey(directory))
-						_dictFiles.Remove(directory);
+					if (_dictFiles.IsExists(directory))
+						_dictFiles.Delete(directory);
 				}
 			}
 		}
@@ -271,7 +272,7 @@ namespace FileStorage.Core
 		/// <returns></returns>
 		public long GetCount(string rootDirectory)
 		{
-			if (!_dictDirectories.ContainsKey(rootDirectory))
+			if (!_dictDirectories.IsExists(rootDirectory))
 			{
 				var directories = Directory.GetDirectories(rootDirectory);
 				GetSubDirectoryCount(directories);
@@ -297,10 +298,10 @@ namespace FileStorage.Core
 			{
 				lock (_syncDirectory)
 				{
-					if (_dictDirectories.ContainsKey(dir))
+					if (_dictDirectories.IsExists(dir))
 						return;
 
-					_dictDirectories[dir] = true;
+					_dictDirectories[dir] = dir;
 				}
 				var d = Directory.GetDirectories(dir);
 				if (!d.Any())

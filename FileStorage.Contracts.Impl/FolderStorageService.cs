@@ -9,6 +9,7 @@ using System.IO;
 
 namespace FileStorage.Contracts.Impl
 {
+	/// <inheritdoc />
 	public class FolderStorageService : IFolderStorageService
 	{
 
@@ -17,6 +18,13 @@ namespace FileStorage.Contracts.Impl
 		private readonly IFileStorageSettings _settings;
 		private readonly ILocalLogger _logger;
 
+		/// <summary>
+		/// Ctor
+		/// </summary>
+		/// <param name="fileStorageFactory"></param>
+		/// <param name="cache"></param>
+		/// <param name="settings"></param>
+		/// <param name="logger"></param>
 		public FolderStorageService(IFolderStorageFactory fileStorageFactory, ICache<byte[]> cache, IFileStorageSettings settings, ILocalLogger logger)
 		{
 			_fileStorageFactory = fileStorageFactory;
@@ -53,7 +61,7 @@ namespace FileStorage.Contracts.Impl
 			return _fileStorageFactory.Create(name);
 
 		}
-
+		/// <inheritdoc />
 		public Stream GetStream(FolderStorageInfo info)
 		{
 			var fileStorage = GetStorage(info.StorageName);
@@ -65,7 +73,7 @@ namespace FileStorage.Contracts.Impl
 			return null;
 		}
 
-
+		/// <inheritdoc />
 		public FileInfoResponse SaveStream(Stream input, FolderStorageInfo info)
 		{
 			var fileStorage = CreateStorage(info.StorageName);
@@ -73,31 +81,35 @@ namespace FileStorage.Contracts.Impl
 			return new FileInfoResponse(result.StorageId, result.Hash, result.Length, fileStorage.GetRelativeFileName(info));
 		}
 
+		/// <inheritdoc />
 		public List<string> GetIds(long offset, int count, string storageName)
 		{
 			var fileStorage = GetStorage(storageName);
 			return fileStorage.GetIds(offset, count);
 		}
 
+		/// <inheritdoc />
 		public DateTime? GetLogDateById(FolderStorageInfo info)
 		{
 			var fileStorage = GetStorage(info.StorageName);
 			return fileStorage.GetLogDateById(info);
 		}
 
+		/// <inheritdoc />
 		public long GetCount(string storageName)
 		{
 			var fileStorage = GetStorage(storageName);
 			return fileStorage.GetCount();
 		}
 
+		/// <inheritdoc />
 		public long GetSize(FolderStorageInfo info)
 		{
 			var fileStorage = GetStorage(info.StorageName);
 			return fileStorage.GetSize(info);
 		}
 
-
+		/// <inheritdoc />
 		public FileInfoResponse SaveById(FileBatchRequest request)
 		{
 			var fileStorage = CreateStorage(request.StorageName);
@@ -117,24 +129,22 @@ namespace FileStorage.Contracts.Impl
 			});
 			return new FileInfoResponse(id, id, bytes.Length, id);
 		}
-
-		//public Stream GetStream(long offset)
-		//{
-		//	return _fileStorage.GetStream(offset);
-		//}
-
+		 
+		/// <inheritdoc />
 		public string GetFullName(FolderStorageInfo info)
 		{
 			var fileStorage = GetStorage(info.StorageName);
 			return fileStorage.GetFullFileName(info);
 		}
 
+		/// <inheritdoc />
 		public void RefreshLog(string storageName)
 		{
 			var fileStorage = GetStorage(storageName);
 			fileStorage.RefreshLog();
 		}
 
+		/// <inheritdoc />
 		public FileLogData GetIdsByDate(DateTime time, int take, string storageName)
 		{
 			var fileStorage = GetStorage(storageName);
@@ -169,7 +179,7 @@ namespace FileStorage.Contracts.Impl
 			return data;
 		}
 
-
+		/// <inheritdoc />
 		public byte[] GetBytes(FolderStorageInfo info)
 		{
 			var fileStorage = GetStorage(info.StorageName);
@@ -188,6 +198,7 @@ namespace FileStorage.Contracts.Impl
 			}
 		}
 
+		/// <inheritdoc />
 		public byte[] GetBytesOffset(FolderStorageInfo info, long offset, int size)
 		{
 			try
@@ -246,7 +257,7 @@ namespace FileStorage.Contracts.Impl
 			return b;
 		}
 
-
+		/// <inheritdoc />
 		public FileInfoResponse SaveBytesByExternal(byte[] bytes, string folderExternalId, string fileExternalId, string storageName)
 		{
 			var fileStorage = CreateStorage(storageName);
@@ -260,7 +271,7 @@ namespace FileStorage.Contracts.Impl
 			}
 		}
 
-
+		/// <inheritdoc />
 		public Stream GetStreamExternalId(string folderExternalId, string fileExternalId, string storageName)
 		{
 			var info = GetFolderStorageInfo(folderExternalId, fileExternalId, storageName);
@@ -279,12 +290,14 @@ namespace FileStorage.Contracts.Impl
 			return info;
 		}
 
+		/// <inheritdoc />
 		public byte[] GetBytesByExternal(string folderExternalId, string fileExternalId, string storageName)
 		{
 			var info = GetFolderStorageInfo(folderExternalId, fileExternalId, storageName);
 			return GetBytes(info);
 		}
 
+		/// <inheritdoc />
 		public string GetExistIdByExternal(string folderExternalId, string fileExternalId, string storageName)
 		{
 			if (IsExistsByExternalId(folderExternalId, fileExternalId, storageName))
@@ -292,11 +305,13 @@ namespace FileStorage.Contracts.Impl
 			return null;
 		}
 
+		/// <inheritdoc />
 		public string GetIdByExternal(string externalId)
 		{
 			return externalId.GetSha1Hash();
 		}
 
+		/// <inheritdoc />
 		public string GetFullNameByExternal(string folderExternalId, string fileExternalId, string storageName)
 		{
 			var info = GetFolderStorageInfo(folderExternalId, fileExternalId, storageName);
@@ -304,23 +319,28 @@ namespace FileStorage.Contracts.Impl
 			return fileStorage.GetFullFileName(info);
 		}
 
+		/// <inheritdoc />
 		public void ChangeDepthDirectory(int newDepth, string storageName)
 		{
 			var fileStorage = GetStorage(storageName);
 			fileStorage.ChangeDepthDirectory(_settings.Depth, newDepth);
 		}
+
+		/// <inheritdoc />
 		public bool IsExistsByExternalId(string folderExternalId, string fileExternalId, string storageName)
 		{
 			var info = GetFolderStorageInfo(folderExternalId, fileExternalId, storageName);
 			return Exists(info);
 		}
 
+		/// <inheritdoc />
 		public bool Exists(FolderStorageInfo info)
 		{
 			var fileStorage = GetStorage(info.StorageName);
 			return fileStorage.Exists(info);
 		}
 
+		/// <inheritdoc />
 		public void Move(string toFolderId, string fromFolderId, string toFileId, string storageName)
 		{
 			if (toFolderId == fromFolderId)
@@ -341,18 +361,21 @@ namespace FileStorage.Contracts.Impl
 			fileStorage.Move(from, to);
 		}
 
+		/// <inheritdoc />
 		public void DeleteTemp(FolderStorageInfo info)
 		{
 			var fileStorage = GetStorage(info.StorageName);
 			fileStorage.DeleteTemp(info);
 		}
 
+		/// <inheritdoc />
 		public void ClearTtl(DateTime date, string storageName)
 		{
 			var fileStorage = GetStorage(storageName);
 			fileStorage.ClearTtl(date);
 		}
 
+		/// <inheritdoc />
 		public void Delete(FolderStorageInfo info)
 		{
 			var fileStorage = GetStorage(info.StorageName);
