@@ -41,14 +41,13 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 
         public static byte[] AddHeader(this byte[] bytes)
         {
-            var message = new List<byte>(bytes.Length + 3 + 8);
-            message.Add((byte)'@');
-            var size = bytes.Length.GetBytes();
-            message.AddRange(size);
-            message.AddRange(bytes);
-            message.Add((byte)'#');
-            bytes = message.ToArray();
-            return bytes;
+            // Кадр: '@' + длина (Int32) + данные + '#'. Один массив вместо List<byte> и его копии через ToArray.
+            var frame = new byte[bytes.Length + 6];
+            frame[0] = (byte)'@';
+            BitConverter.TryWriteBytes(new Span<byte>(frame, 1, 4), bytes.Length);
+            Buffer.BlockCopy(bytes, 0, frame, 5, bytes.Length);
+            frame[frame.Length - 1] = (byte)'#';
+            return frame;
         }
 
       

@@ -228,19 +228,9 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <param name="sessionId"></param>
 		public void Write(string externalFolderId, string externalFileId, string storageName, Stream stream, string sessionId)
 		{
-			var length = 64001;
-
-			var byteCount = 0;
-			var buffer = new byte[length];
-			var len = stream.Length;
-			var close = false;
-			while (!close && (byteCount = stream.Read(buffer, 0, buffer.Length)) > 0)
-			{
-				close = length > byteCount;
-				if (len == stream.Position)
-					close = length > byteCount;
-				Write(externalFolderId, externalFileId, storageName, buffer.Take(byteCount).ToArray(), close, sessionId);
-			}
+			// Блоки по 64 КБ, у последнего — признак закрытия. Раньше при размере потока, кратном блоку,
+			// файл не закрывался, а каждый блок копировался через Take().ToArray().
+			stream.WriteChunks(64 * 1024, (chunk, close) => Write(externalFolderId, externalFileId, storageName, chunk, close, sessionId));
 		}
 
 		/// <summary>

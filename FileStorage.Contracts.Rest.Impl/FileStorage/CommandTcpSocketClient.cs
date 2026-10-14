@@ -244,6 +244,9 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			byte[] buffer = new byte[_clientSocket.Available];
 
 			int size = _clientSocket.Client.Receive(buffer);
+			// Receive может прочитать меньше, чем Available: раньше хвост из нулей попадал в разбор ответа
+			if (size < buffer.Length)
+				Array.Resize(ref buffer, size);
 			return buffer;
 		}
 

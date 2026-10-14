@@ -452,20 +452,9 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <param name="sessionId"></param>
 		public void SaveBytes(string fileId, string storageName, Stream stream, string sessionId)
 		{
-			var length = 11000;
-
-			var byteCount = 0;
-			var buffer = new byte[length];
-			var len = stream.Length;
-			var close = false;
-			while (!close && (byteCount = stream.Read(buffer, 0, buffer.Length)) > 0)
-			{
-				close = length > byteCount;
-				if (len == stream.Position)
-					close = length > byteCount;
-					 
-				Write(fileId, buffer.Take(byteCount).ToArray(), storageName, close, sessionId);
-			}
+			// Блоки по 64 КБ, у последнего — признак закрытия. Раньше при размере потока, кратном блоку,
+			// файл не закрывался, а каждый блок копировался через Take().ToArray().
+			stream.WriteChunks(64 * 1024, (chunk, close) => Write(fileId, chunk, storageName, close, sessionId));
 		}
 		/// <summary>
 		/// Load data from FS to Stream

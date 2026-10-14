@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -74,47 +75,79 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			var bytes = System.Text.Encoding.UTF8.GetBytes(serialize);
 			return bytes;
 		}
-        public static bool IsReadToEndCommands(this List<byte> bytes)
-        {
-            var value = bytes.Take(50).ToArray();
-            if (value[0] == '@')
-            {
-                var size = BitConverter.ToInt32(value, 1);
-                if (bytes.Count > size)
-                    return true;
+		public static bool IsReadToEndCommands(this List<byte> bytes)
+		{
+			// Кадр полный, когда получены все длина + 6 байт ('@' + Int32 + данные + '#').
+			// Раньше было достаточно больше «длины» байт, и неполный ответ считался полным.
+			if (bytes.Count < 5 || bytes[0] != '@')
+				return false;
+			var size = BitConverter.ToInt32(new[] { bytes[1], bytes[2], bytes[3], bytes[4] }, 0);
+			return size >= 0 && bytes.Count >= (long)size + 6;
+		}
 
-            }
-
-            return false;
-
-        }
 		public static string[] GetCommands(this byte[] bytes)
-        {
+		{
+			if (bytes == null)
+				return new string[0];
 
-            if (bytes == null)
-                return new string[0];
+			var result = new List<string>();
+			for (int i = 0; i + 5 <= bytes.Length; i++)
+			{
+				if (bytes[i] == '@')
+				{
+					var size = BitConverter.ToInt32(bytes, i + 1);
+					var skip = i + 1 + 4;
+					// раньше конец считался как skip + i + size — для всех кадров, кроме первого, неверно
+					var end = (long)skip + size;
+					if (size >= 0 && bytes.Length > end && bytes[end] == '#')
+					{
+						// строка — прямо из массива, без Skip/Take/ToArray
+						var command = Encoding.UTF8.GetString(bytes, skip, size);
+						result.Add(command);
+						i = (int)end;
+					}
+				}
+			}
 
-            var result = new List<string>();
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                if (bytes[i] == '@')
-                {
-                    var size = BitConverter.ToInt32(bytes, i+1);
-                    var skip = i + 1 + 4;
-                    var offset = i + size;
-                    var end = skip + offset;
-                    if (bytes.Length > end && bytes[end] == '#')
-                    {
-                        var array = bytes.Skip(skip).Take(size).ToArray();
-                        var command = Encoding.UTF8.GetString(array);
-                        result.Add(command);
-                        i = end;
-                    }
-                }
-            }
+			return result.ToArray();
+		}
 
-            return result.ToArray();
-        }
+		/// <summary>
+		/// Читает поток блоками по chunkSize байт и передаёт каждый блок в write; у последнего блока close = true.
+		/// Блок отправляется только после чтения следующего, поэтому последний блок известен заранее и не нужен
+		/// stream.Length. Раньше при размере потока, кратном размеру блока, последний блок уходил без признака
+		/// закрытия, а неполное чтение посреди потока закрывало файл раньше времени.
+		/// Пустой поток, как и раньше, ничего не отправляет.
+		/// </summary>
+		public static void WriteChunks(this Stream stream, int chunkSize, Action<byte[], bool> write)
+		{
+			var buffer = new byte[chunkSize];
+			var next = new byte[chunkSize];
+			var count = ReadFull(stream, buffer);
+			while (count > 0)
+			{
+				var nextCount = ReadFull(stream, next);
+				var chunk = new byte[count];
+				Buffer.BlockCopy(buffer, 0, chunk, 0, count);
+				write(chunk, nextCount == 0);
+
+				var tmp = buffer;
+				buffer = next;
+				next = tmp;
+				count = nextCount;
+			}
+		}
+
+		private static int ReadFull(Stream stream, byte[] buffer)
+		{
+			var total = 0;
+			int read;
+			while (total < buffer.Length && (read = stream.Read(buffer, total, buffer.Length - total)) > 0)
+			{
+				total += read;
+			}
+			return total;
+		}
 
 		public static string GetHash(this string value)
 		{
