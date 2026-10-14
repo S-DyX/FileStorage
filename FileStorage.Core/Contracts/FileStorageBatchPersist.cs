@@ -163,8 +163,11 @@ namespace FileStorage.Contracts
 		private bool _isOpen;
 		private readonly string _sessionId;
 
-		public FileStorageBatchPersistById(IWcfFileStorageService service, string id)
+		private readonly string _storageName;
+
+		public FileStorageBatchPersistById(IWcfFileStorageService service, string id, string storageName = null)
 		{
+			_storageName = storageName;
 			FileInProcess.Instance.Register(id);
 			_registeredId = id;
 			_service = service;
@@ -244,6 +247,8 @@ namespace FileStorage.Contracts
 				Id = _id,
 				Bytes = send,
 				Close = close,
+				// раньше хранилище не передавалось, и всё писалось в хранилище по умолчанию
+				StorageName = _storageName,
 				SessionId = _sessionId
 			};
 			var data = _service.SaveByBatchRequest(request);

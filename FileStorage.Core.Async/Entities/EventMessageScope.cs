@@ -162,14 +162,21 @@ namespace FileStorage.Core.Entities
 		}
 	}
 
+	/// <summary>
+	/// События одного месяца. Хранится последнее событие по каждой паре «папка + id файла»:
+	/// при переносе между папками удаление из старой папки и сохранение в новой не перекрывают друг друга.
+	/// </summary>
 	public sealed class EventMessageGroup : IEnumerable<EventMessage>
 	{
 		public EventMessageGroup(DateTime date, int capacity = 100)
 		{
-			_eventsDictionary = new Dictionary<string, EventMessage>(capacity);
+			_events = new Dictionary<string, Dictionary<string, EventMessage>>(capacity);
 			Date = date;
 		}
 		private readonly object _sync = new object();
+
+		// id файла → (папка → последнее событие); у FileStorage папка всегда пустая
+		private readonly Dictionary<string, Dictionary<string, EventMessage>> _events;
 
 		public DateTime Date { get; private set; }
 
@@ -177,7 +184,20 @@ namespace FileStorage.Core.Entities
 		{
 			lock (_sync)
 			{
-				_eventsDictionary[eventMessage.Id] = eventMessage;
+				var folder = eventMessage.FolderId ?? string.Empty;
+				Dictionary<string, EventMessage> byFolder;
+				if (!_events.TryGetValue(eventMessage.Id, out byFolder))
+				{
+					byFolder = new Dictionary<string, EventMessage>(1);
+					_events.Add(eventMessage.Id, byFolder);
+				}
+				else if (folder.Length == 0)
+				{
+					// Событие без папки (FileStorage или старые записи журнала FolderStorage) относится к файлу целиком —
+					// как раньше, когда журнал хранился только по id.
+					byFolder.Clear();
+				}
+				byFolder[folder] = eventMessage;
 			}
 		}
 
@@ -189,23 +209,32 @@ namespace FileStorage.Core.Entities
 			}
 		}
 
+		/// <summary>
+		/// Последнее по времени событие файла в любой папке
+		/// </summary>
 		public EventMessage GetById(string id)
 		{
 			lock (_sync)
 			{
-				EventMessage eventMessage;
-				return _eventsDictionary.TryGetValue(id, out eventMessage) ? eventMessage : null;
+				Dictionary<string, EventMessage> byFolder;
+				if (!_events.TryGetValue(id, out byFolder))
+					return null;
+				EventMessage latest = null;
+				foreach (var eventMessage in byFolder.Values)
+				{
+					if (latest == null || eventMessage.Time >= latest.Time)
+						latest = eventMessage;
+				}
+				return latest;
 			}
 		}
-
-		private readonly Dictionary<string, EventMessage> _eventsDictionary;
 
 		public IEnumerator<EventMessage> GetEnumerator()
 		{
 			// перебираем снимок, чтобы параллельный Add не ломал перечисление
 			lock (_sync)
 			{
-				return _eventsDictionary.Values.ToList().GetEnumerator();
+				return _events.Values.SelectMany(x => x.Values).ToList().GetEnumerator();
 			}
 		}
 

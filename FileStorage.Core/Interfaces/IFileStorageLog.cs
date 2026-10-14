@@ -1,6 +1,7 @@
 ﻿using FileStorage.Core.Entities;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -67,6 +68,8 @@ namespace FileStorage.Core.Interfaces
 		private readonly object _syncSave = new object();
 		private readonly string _rootDirectory;
 
+		private readonly ILocalLogger _logger;
+
 		private DisallowConcurrentModeRepeater _repeater = new DisallowConcurrentModeRepeater(new TimeSpan(), new TimeSpan(0, 0, 0, 60));
 
 		private DisallowConcurrentModeRepeater _repeaterFileCheck = new DisallowConcurrentModeRepeater(new TimeSpan(), new TimeSpan(0, 0, 0, 60));
@@ -74,12 +77,22 @@ namespace FileStorage.Core.Interfaces
 		private List<FileInfoLocal> _files = new List<FileInfoLocal>();
 
 		public FileStorageLog(string rootDirectory)
+			: this(rootDirectory, null)
+		{
+		}
+
+		public FileStorageLog(string rootDirectory, ILocalLogger logger)
 		{
 			_rootDirectory = rootDirectory;
+			_logger = logger;
 			_newEvents = new List<EventMessage>(10000);
 			_scope = new EventMessageScope();
 
 			Reinit();
+
+			// раньше ошибки таймеров пропадали молча: на событие Error никто не подписывался
+			_repeater.Error += OnRepeaterError;
+			_repeaterFileCheck.Error += OnRepeaterError;
 
 			_repeater.Start((token) =>
 			{
@@ -229,7 +242,8 @@ namespace FileStorage.Core.Interfaces
 			var sb = new StringBuilder();
 			foreach (var item in items)
 			{
-				sb.AppendLine($"{item.Time};{item.Id};{item.FolderId};{(int)item.Type};{item.Size}");
+				// Время в ISO 8601 ("O"): не зависит от культуры сервера и хранит время с точностью до тика.
+				sb.AppendLine($"{item.Time.ToString("O", CultureInfo.InvariantCulture)};{Escape(item.Id)};{Escape(item.FolderId)};{(int)item.Type};{item.Size.ToString(CultureInfo.InvariantCulture)}");
 			}
 			var fileName = GetFileName(date);
 			var fileInfo = new FileInfo(fileName);
@@ -324,7 +338,14 @@ namespace FileStorage.Core.Interfaces
 		{
 			bool isParsed = true;
 			DateTime date;
-			if (DateTime.TryParse(data[0], out date))
+			// Новые записи — в формате ISO 8601 с признаком UTC. Старые писались в формате текущей культуры,
+			// их разбираем как раньше.
+			if (DateTime.TryParse(data[0], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out date)
+				&& date.Kind == DateTimeKind.Utc)
+			{
+				eventMessage.Time = date;
+			}
+			else if (DateTime.TryParse(data[0], out date))
 			{
 				eventMessage.Time = new DateTime(date.Ticks, DateTimeKind.Utc);
 			}
@@ -332,19 +353,16 @@ namespace FileStorage.Core.Interfaces
 			{
 				isParsed = false;
 			}
-			eventMessage.Id = data[1];
+			eventMessage.Id = Unescape(data[1]);
 			var index = 2;
 			if (data.Length > 4)
 			{
-				eventMessage.FolderId = data[2];
+				eventMessage.FolderId = Unescape(data[2]);
 				index = 3;
-
 			}
 
-
-
 			int type = 0;
-			if (int.TryParse(data[index], out type))
+			if (int.TryParse(data[index], NumberStyles.Integer, CultureInfo.InvariantCulture, out type))
 			{
 				eventMessage.Type = (EventType)type;
 			}
@@ -355,12 +373,45 @@ namespace FileStorage.Core.Interfaces
 			if (data.Length > index + 1)
 			{
 				long size;
-				if (long.TryParse(data[index + 1], out size))
+				if (long.TryParse(data[index + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out size))
 				{
 					eventMessage.Size = size;
 				}
 			}
 			return isParsed;
+		}
+
+		private static readonly char[] EscapedChars = { '%', ';', '\r', '\n' };
+
+		/// <summary>
+		/// Экранирует символы, которые ломают строку журнала (разделитель ';' и переводы строк)
+		/// </summary>
+		private static string Escape(string value)
+		{
+			if (string.IsNullOrEmpty(value) || value.IndexOfAny(EscapedChars) < 0)
+				return value;
+			return value.Replace("%", "%25").Replace(";", "%3B").Replace("\r", "%0D").Replace("\n", "%0A");
+		}
+
+		private static string Unescape(string value)
+		{
+			if (string.IsNullOrEmpty(value) || value.IndexOf('%') < 0)
+				return value;
+			return value.Replace("%3B", ";").Replace("%0D", "\r").Replace("%0A", "\n").Replace("%25", "%");
+		}
+
+		private void OnRepeaterError(object sender, UnhandledExceptionEventArgs e)
+		{
+			var message = $"FileStorageLog {_rootDirectory}: background operation failed";
+			var exception = e.ExceptionObject as Exception;
+			if (_logger != null)
+			{
+				_logger.Error(message, exception);
+			}
+			else
+			{
+				System.Diagnostics.Trace.TraceError($"{message}: {exception}");
+			}
 		}
 
 		public string GetRootLogDir()

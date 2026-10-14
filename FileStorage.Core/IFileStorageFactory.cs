@@ -36,11 +36,12 @@ namespace FileStorage.Core
 	/// <summary>
 	/// <see cref="IFileStorageFactory{TValue}"/>
 	/// </summary>
-	public sealed class FileStorageFactory : IFileStorageFactory<string>
+	public sealed class FileStorageFactory : IFileStorageFactory<string>, IDisposable
 	{
 		private readonly IFileStorageSettings _fileStorageSettings;
 		private readonly IFileStorageVirtual _fileStorageVirtual;
 		private readonly ILocalLogger _localLogger;
+		// все обращения к словарю — под _sync: Dictionary не потокобезопасен даже для чтения во время записи
 		private readonly Dictionary<string, IFileStorage<string>> _fileStorages = new Dictionary<string, IFileStorage<string>>();
 		private readonly object _sync = new object();
 
@@ -62,15 +63,13 @@ namespace FileStorage.Core
 			if (string.IsNullOrWhiteSpace(key))
 				key = @default;
 
-			if (_fileStorages.ContainsKey(key))
-				return _fileStorages[key];
-
 			lock (_sync)
 			{
-				if (_fileStorages.ContainsKey(key))
-					return _fileStorages[key];
+				IFileStorage<string> fileStorage;
+				if (_fileStorages.TryGetValue(key, out fileStorage))
+					return fileStorage;
 
-				var fileStorage = new FileStorage(key, _fileStorageSettings, _fileStorageVirtual, _localLogger);
+				fileStorage = new FileStorage(key, _fileStorageSettings, _fileStorageVirtual, _localLogger);
 				_fileStorages[key] = fileStorage;
 				return fileStorage;
 			}
@@ -84,29 +83,39 @@ namespace FileStorage.Core
 		/// <returns><see cref="IFileStorage{TValue}"/></returns>
 		public IFileStorage<string> Get(string name)
 		{
-			var key = name;
-			if (string.IsNullOrWhiteSpace(key))
-				key = @default;
-
-
-			if (_fileStorages.ContainsKey(key))
-				return _fileStorages[key];
-			var directory = FileStorage.GetRoot(_fileStorageSettings, name);
-
-			
-				return Create(name);
-
-			//return Create(@default);
+			// как и раньше, несуществующее хранилище создаётся
+			return Create(name);
 		}
 
 		public List<IFileStorage<string>> GetAll()
 		{
-			return _fileStorages.Values.ToList();
+			lock (_sync)
+			{
+				return _fileStorages.Values.ToList();
+			}
 		}
 
 		public List<string> GetNames()
 		{
-			return _fileStorages.Keys.ToList();
+			lock (_sync)
+			{
+				return _fileStorages.Keys.ToList();
+			}
+		}
+
+		/// <summary>
+		/// Останавливает журналы всех созданных хранилищ (таймеры, несохранённые события)
+		/// </summary>
+		public void Dispose()
+		{
+			lock (_sync)
+			{
+				foreach (var fileStorage in _fileStorages.Values)
+				{
+					(fileStorage as IDisposable)?.Dispose();
+				}
+				_fileStorages.Clear();
+			}
 		}
 	}
 }

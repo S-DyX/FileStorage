@@ -5,6 +5,7 @@ using FileStorage.Core.Interfaces;
 using FileStorage.Core.Interfaces.Settings;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -16,7 +17,7 @@ namespace FileStorage.Core
 	/// <summary>
 	/// Hierarchical file storage stored on disk
 	/// </summary>
-	public sealed class FolderStorage : IFolderStorage
+	public sealed class FolderStorage : IFolderStorage, IDisposable
 	{
 		private readonly string _name;
 		private readonly IFileStorageSettings _settings;
@@ -44,8 +45,8 @@ namespace FileStorage.Core
 			_fileStorageVirtual = fileStorageVirtual;
 			_localLogger = localLogger;
 			_rootDirectory = GetRoot(_settings, name);
-			_depth = _settings.Depth;
-			_log = new FileStorageLog(_rootDirectory);
+			_depth = LoadDepth();
+			_log = new FileStorageLog(_rootDirectory, _localLogger);
 			Task.Factory.StartNew(() => _fileStorageVirtual.GetCount(_rootDirectory));
 		}
 
@@ -95,29 +96,20 @@ namespace FileStorage.Core
 
 		private void MoveFile(string fileNameTo, string filenameFrom, FileInfo fileInfo, FolderStorageInfo info)
 		{
-			var tmpFileInfo = new FileInfo(filenameFrom);
-			var length = tmpFileInfo.Length;
-			if (!_fileStorageVirtual.Exists(fileNameTo))
+			var length = new FileInfo(filenameFrom).Length;
+			var target = new FileInfo(fileNameTo);
+			if (target.Exists && target.Length == length && StreamHelper.FilesAreEqual(fileNameTo, filenameFrom))
 			{
-				_fileStorageVirtual.Move(filenameFrom, fileNameTo);
-				_log.Write(EventType.FileSave, fileInfo.Name, length, info.FolderId);
+				// такой же файл уже сохранён (например, повторный SaveAsHash) — перезаписывать не нужно
+				_fileStorageVirtual.Delete(filenameFrom);
+				_fileStorageVirtual.Add(fileNameTo);
+				return;
 			}
-			else
-			{
-				if (fileInfo.Length != length)
-				{
-					_fileStorageVirtual.Delete(fileInfo.FullName);
-					_fileStorageVirtual.Move(filenameFrom, fileNameTo);
-					_log.Write(EventType.FileSave, fileInfo.Name, length, info.FolderId);
-				}
-				else if (_fileStorageVirtual.Exists(filenameFrom))
-				{
-					_fileStorageVirtual.Delete(filenameFrom);
-
-				}
-			}
+			// File.Move перезаписывает существующий файл. Раньше новое содержимое того же размера молча
+			// выбрасывалось, а если кеш считал файл существующим, а на диске его не было, данные терялись.
+			_fileStorageVirtual.Move(filenameFrom, fileNameTo);
+			_log.Write(EventType.FileSave, fileInfo.Name, length, info.FolderId);
 		}
-
 
 		/// <summary>
 		/// <see cref="IFolderStorage.SaveToFile(SaveFileRequest)"/>
@@ -137,7 +129,8 @@ namespace FileStorage.Core
 				var tempFileName = GetTempFileName(fileName, request.SessionId);
 				try
 				{
-					var bytes = request.Bytes;
+					// запрос может только закрывать файл, без данных
+					var bytes = request.Bytes ?? Array.Empty<byte>();
 
 					using (var outstream = File.Open(tempFileName, FileMode.Append))
 					{
@@ -166,10 +159,12 @@ namespace FileStorage.Core
 		/// <param name="date"></param>
 		public void ClearTtl(DateTime date)
 		{
-
-			; _localLogger?.Info($"TTL Start:{date}");
+			_localLogger?.Info($"TTL Start:{date}");
 			var files = _log.GetAll().OrderBy(x => x.Time).ToList();
-			var deleted = files.Where(x => x.Type == EventType.FileDelete).ToList();
+			// удаления: обычные и удаление из старой папки при переносе
+			var deletedById = files
+				.Where(x => x.Type == EventType.FileDelete || x.Type == EventType.FileMoveDelete)
+				.ToLookup(x => x.Id);
 			var save = new List<EventMessage>();
 			var foundAny = false;
 			Parallel.ForEach(files, file =>
@@ -178,38 +173,25 @@ namespace FileStorage.Core
 				{
 					lock (save)
 					{
-
 						save.Add(file);
-						return;
 					}
+					return;
 				}
 
 				foundAny = true;
 				switch (file.Type)
 				{
 					case EventType.FileDelete:
+					case EventType.FileMoveDelete:
 					case EventType.Unknown:
 						return;
-						break;
 				}
 
-				if (deleted.FirstOrDefault(x => x.Id == file.Id && x.Time > file.Time) != null)
+				// файл позже удалён из этой папки (событие без папки — из старых журналов — относится к любой папке)
+				if (deletedById[file.Id].Any(x => x.Time > file.Time && (string.IsNullOrEmpty(x.FolderId) || x.FolderId == file.FolderId)))
 				{
 					return;
 				}
-
-				//if (string.IsNullOrEmpty(file.FolderId))
-				//{
-				//	var fileFound = Directory.GetFiles(_rootDirectory, file.Id, SearchOption.AllDirectories)
-				//		.FirstOrDefault();
-
-				//	if (fileFound != null)
-				//	{
-				//		var path = fileFound.Replace(_rootDirectory, "").Replace(file.Id, "")
-				//			.Replace(Path.DirectorySeparatorChar.ToString(), "");
-				//		file.FolderId = path;
-				//	}
-				//}
 
 				if (string.IsNullOrEmpty(file.FolderId))
 				{
@@ -227,17 +209,7 @@ namespace FileStorage.Core
 			});
 			if (foundAny)
 				_log.Rewrite(save, DateTime.UtcNow);
-			var fs = Directory.GetFiles(_rootDirectory, "*", SearchOption.AllDirectories);
-			foreach (var file in fs)
-			{
-				var fileInfo = new FileInfo(file);
-				if (fileInfo.Extension == ".log")
-					continue;
-				if (fileInfo.CreationTimeUtc < date)
-				{
-					_fileStorageVirtual.Delete(file);
-				}
-			}
+			DeleteExpiredFiles(date, save);
 		}
 
 		public void Drop()
@@ -275,6 +247,8 @@ namespace FileStorage.Core
 			{
 				_fileStorageVirtual.Add(fullName);
 			}
+			// раньше дописанный файл не попадал в журнал и не был виден синхронизации
+			_log.Write(EventType.FileSave, info.FileId, new FileInfo(fullName).Length, info.FolderId);
 		}
 
 
@@ -340,36 +314,37 @@ namespace FileStorage.Core
 			var directory = GetDirectory(info);
 			if (string.IsNullOrWhiteSpace(info.FileId))
 			{
+				// Короткий FolderId (не длиннее глубины) даёт корень хранилища — удалять его файлы нельзя.
+				if (IsRootDirectory(directory))
+					return false;
 				_fileStorageVirtual.DeleteDirectory(directory);
 				return true;
 			}
-			else
+
+			var fileName = GetFullFileName(info);
+			if (!_fileStorageVirtual.Exists(fileName))
+				return false;
+
+			_fileStorageVirtual.Delete(fileName);
+			// каталог мог исчезнуть раньше, чем обновился кеш; корень хранилища не удаляем
+			if (!IsRootDirectory(directory) && Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
 			{
-				var fileName = GetFullFileName(info);
-				if (_fileStorageVirtual.Exists(fileName))
-				{
-					_fileStorageVirtual.Delete(fileName);
-					if (!Directory.EnumerateFiles(directory).Any() && !Directory.EnumerateDirectories(directory).Any())
-					{
-						_fileStorageVirtual.DeleteDirectory(directory);
-						//Directory.Delete(directory);
-					}
-
-					if (!info.DoNotNeedLog)
-					{
-						_log.Write(new EventMessage()
-						{
-							Type = EventType.FileDelete,
-							Id = info.FileId,
-							Time = DateTime.UtcNow
-						});
-					}
-
-					return true;
-				}
+				_fileStorageVirtual.DeleteDirectory(directory);
 			}
 
-			return false;
+			if (!info.DoNotNeedLog)
+			{
+				_log.Write(new EventMessage()
+				{
+					Type = EventType.FileDelete,
+					Id = info.FileId,
+					// папка нужна, чтобы удаление не затронуло файл с тем же id в других папках
+					FolderId = info.FolderId,
+					Time = DateTime.UtcNow
+				});
+			}
+
+			return true;
 		}
 		/// <summary>
 		/// <see cref="IFolderStorage.DeleteTemp(FolderStorageInfo)"/>
@@ -450,7 +425,10 @@ namespace FileStorage.Core
 			}
 			else
 			{
-				pathSb.Append(id.Substring(depth, length));
+				// При глубине 1 первый символ id в имя каталога не входит — так файлы уже разложены на диске.
+				// Раньше для коротких id здесь было ArgumentOutOfRangeException.
+				var start = Math.Min(depth, id.Length);
+				pathSb.Append(id.Substring(start, Math.Min(length, id.Length - start)));
 			}
 
 
@@ -472,6 +450,7 @@ namespace FileStorage.Core
 			if (!Directory.Exists(_rootDirectory))
 			{
 				_depth = newDepth;
+				SaveDepth(newDepth);
 				return;
 			}
 			// При глубине 0 и 1 FolderId попадает в путь не целиком (обрезается по ElementsCount
@@ -481,7 +460,7 @@ namespace FileStorage.Core
 
 			var logDirectory = GetLogDirectory();
 			var files = Directory.GetFiles(_rootDirectory, "*", SearchOption.AllDirectories)
-				.Where(f => !f.StartsWith(logDirectory, PathComparison) && !f.EndsWith(".tmp", PathComparison))
+				.Where(f => !IsServiceFile(f))
 				.ToList();
 
 			// Сначала вычисляем все новые пути: если для какого-то файла путь построить нельзя,
@@ -489,14 +468,10 @@ namespace FileStorage.Core
 			var moves = new List<KeyValuePair<string, string>>(files.Count);
 			foreach (var file in files)
 			{
-				var fileDirectory = Path.GetDirectoryName(file) + Path.DirectorySeparatorChar;
+				var folderId = GetFolderIdFromPath(file);
 				// файлы в корне (FolderId не длиннее глубины) лежат там при любой глубине больше 1
-				if (fileDirectory.Length <= _rootDirectory.Length)
+				if (folderId == null)
 					continue;
-
-				// при глубине больше 1 путь = символы FolderId, разделённые по уровням, + остаток FolderId
-				var relativeDirectory = fileDirectory.Substring(_rootDirectory.Length, fileDirectory.Length - _rootDirectory.Length - 1);
-				var folderId = relativeDirectory.Replace(Path.DirectorySeparatorChar.ToString(), string.Empty);
 				var fileId = Path.GetFileName(file);
 				var newDirectoryName = GetDirectory(new FolderStorageInfo()
 				{
@@ -515,12 +490,126 @@ namespace FileStorage.Core
 			}
 
 			_depth = newDepth;
+			// сохраняем глубину, чтобы после перезапуска файлы искались по новой схеме
+			SaveDepth(newDepth);
 			DeleteEmptyDirectories(_rootDirectory, logDirectory);
 		}
 
 		private string GetLogDirectory()
 		{
 			return Path.Combine(_rootDirectory, "Log") + Path.DirectorySeparatorChar;
+		}
+
+		private const string DepthFileName = "depth.config";
+
+		private string GetDepthFileName()
+		{
+			return Path.Combine(_rootDirectory, DepthFileName);
+		}
+
+		/// <summary>
+		/// Глубина дерева этого хранилища. После ChangeDepthDirectory она сохраняется в каталоге хранилища,
+		/// чтобы после перезапуска файлы искались по фактической схеме, а не по TreeDepth из настроек.
+		/// </summary>
+		private int LoadDepth()
+		{
+			var fileName = GetDepthFileName();
+			try
+			{
+				int depth;
+				if (File.Exists(fileName)
+					&& int.TryParse(File.ReadAllText(fileName).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out depth)
+					&& depth >= 0)
+				{
+					return depth;
+				}
+			}
+			catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+			{
+				_localLogger?.Error($"Can not read {fileName}", e);
+			}
+			return _settings.Depth;
+		}
+
+		private void SaveDepth(int depth)
+		{
+			Directory.CreateDirectory(_rootDirectory);
+			File.WriteAllText(GetDepthFileName(), depth.ToString(CultureInfo.InvariantCulture));
+		}
+
+		/// <summary>
+		/// Служебные файлы в каталоге хранилища: журнал, временные файлы, файл глубины дерева
+		/// </summary>
+		private bool IsServiceFile(string fileName)
+		{
+			return fileName.StartsWith(GetLogDirectory(), PathComparison)
+				|| fileName.EndsWith(".tmp", PathComparison)
+				|| string.Equals(fileName, GetDepthFileName(), PathComparison);
+		}
+
+		private bool IsRootDirectory(string directory)
+		{
+			return string.Equals(directory.TrimEnd(Path.DirectorySeparatorChar), _rootDirectory.TrimEnd(Path.DirectorySeparatorChar), PathComparison);
+		}
+
+		/// <summary>
+		/// FolderId по пути файла. При глубине больше 1 путь — это символы FolderId по уровням плюс остаток,
+		/// поэтому FolderId восстанавливается склейкой каталогов. При глубине 0–1 он хранится в пути не полностью,
+		/// а у файлов в корне его нет — тогда возвращается null.
+		/// </summary>
+		private string GetFolderIdFromPath(string fileName)
+		{
+			if (_depth <= 1)
+				return null;
+			var fileDirectory = Path.GetDirectoryName(fileName) + Path.DirectorySeparatorChar;
+			if (fileDirectory.Length <= _rootDirectory.Length || !fileDirectory.StartsWith(_rootDirectory, PathComparison))
+				return null;
+			var relativeDirectory = fileDirectory.Substring(_rootDirectory.Length, fileDirectory.Length - _rootDirectory.Length - 1);
+			return relativeDirectory.Replace(Path.DirectorySeparatorChar.ToString(), string.Empty);
+		}
+
+		/// <summary>
+		/// Удаляет с диска файлы старше date, о которых нет свежих записей в журнале (например, записанные
+		/// до появления журнала), а также временные файлы и архивы журнала старше date.
+		/// </summary>
+		private void DeleteExpiredFiles(DateTime date, List<EventMessage> freshEvents)
+		{
+			// Файлы со свежими записями не трогаем: при повторном сохранении того же содержимого
+			// файл не перезаписывается и сохраняет старую дату на диске.
+			var freshIds = new HashSet<string>(freshEvents.Where(x => x.Type == EventType.FileSave).Select(x => x.Id));
+			var logDirectory = GetLogDirectory();
+			var depthFileName = GetDepthFileName();
+			foreach (var file in Directory.GetFiles(_rootDirectory, "*", SearchOption.AllDirectories))
+			{
+				if (string.Equals(file, depthFileName, PathComparison))
+					continue;
+				var fileInfo = new FileInfo(file);
+				if (fileInfo.Extension == ".log")
+					continue;
+				var lastChange = fileInfo.CreationTimeUtc > fileInfo.LastWriteTimeUtc ? fileInfo.CreationTimeUtc : fileInfo.LastWriteTimeUtc;
+				if (lastChange >= date)
+					continue;
+				var isStorageFile = !file.StartsWith(logDirectory, PathComparison) && !file.EndsWith(".tmp", PathComparison);
+				if (isStorageFile && freshIds.Contains(fileInfo.Name))
+					continue;
+				try
+				{
+					var length = fileInfo.Length;
+					var folderId = isStorageFile ? GetFolderIdFromPath(file) : null;
+					_fileStorageVirtual.Delete(file);
+					// Об удалении пишем в журнал, чтобы его увидела синхронизация. Без папки событие
+					// относилось бы к файлу с этим id во всех папках, поэтому пишем только если папка известна.
+					if (folderId != null)
+					{
+						_log.Write(EventType.FileDelete, fileInfo.Name, length, folderId);
+					}
+				}
+				catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+				{
+					// файл может быть занят (например, идёт загрузка) — пропускаем его, а не прерываем очистку
+					_localLogger?.Error($"TTL: can not delete {file}", e);
+				}
+			}
 		}
 
 		private static void DeleteEmptyDirectories(string directory, string logDirectory)
@@ -581,7 +670,8 @@ namespace FileStorage.Core
 						});
 					}
 				}
-				result.Add(id.ToUpper());
+				// id возвращаем как есть: на Linux регистр в именах файлов важен
+				result.Add(id);
 
 			}
 			return result;
@@ -726,9 +816,8 @@ namespace FileStorage.Core
 			// File.Move перезаписывает существующий файл, удалять его отдельно не нужно
 			_fileStorageVirtual.Move(fileNameFrom, fileNameTo);
 
-			// Журнал в памяти хранит по каждому id только последнее событие. При переносе между папками
-			// имя файла обычно не меняется, поэтому удаление из старой папки пишем первым:
-			// итоговым состоянием должно быть «файл есть в новой папке».
+			// Журнал хранит события по паре «папка + id», поэтому удаление из старой папки
+			// и сохранение в новой не перекрывают друг друга, даже если имя файла не меняется.
 			_log.Write(EventType.FileMoveDelete, fromId.FileId, length, fromId.FolderId);
 			_log.Write(EventType.FileSave, toId.FileId, length, toId.FolderId);
 		}
@@ -793,7 +882,7 @@ namespace FileStorage.Core
 		public FileToken SaveStream(Stream input, FolderStorageInfo info)
 		{
 			Save(input, info);
-			return new FileToken(info.FileId, info.FileId, 0);
+			return new FileToken(info.FileId, info.FileId, GetSize(info));
 		}
 
 		/// <summary>
@@ -819,7 +908,12 @@ namespace FileStorage.Core
 			{
 				Directory.Delete(_rootDirectory, true);
 			}
-			_log = new FileStorageLog(_rootDirectory);
+			_log = new FileStorageLog(_rootDirectory, _localLogger);
+			// файл глубины удалён вместе с каталогом; если глубина отличается от настроек, сохраняем её снова
+			if (_depth != _settings.Depth)
+			{
+				SaveDepth(_depth);
+			}
 		}
 
 		/// <summary>
@@ -830,13 +924,19 @@ namespace FileStorage.Core
 		public string GetRelativeFileName(FolderStorageInfo info)
 		{
 			var directory = GetDirectory(info);
-			var directoryInfo = new DirectoryInfo(directory);
-			if (directoryInfo.Exists)
-			{
-				return Path.Combine(directoryInfo.Name, info.FileId);
-			}
+			if (!Directory.Exists(directory))
+				return null;
+			// путь от корня хранилища; раньше возвращался только последний каталог
+			var relativeDirectory = directory.Length > _rootDirectory.Length ? directory.Substring(_rootDirectory.Length) : string.Empty;
+			return Path.Combine(relativeDirectory, info.FileId);
+		}
 
-			return null;
+		/// <summary>
+		/// Останавливает таймеры журнала и сохраняет ещё не записанные события
+		/// </summary>
+		public void Dispose()
+		{
+			_log.Dispose();
 		}
 	}
 }
