@@ -78,15 +78,15 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 
 		protected override void Dispose(bool disposing)
 		{
-			_stream.Close();
-			_stream.Dispose();
-			if (_deleteFile && disposing && isFileStream)
+			if (disposing)
 			{
-				if (File.Exists(_fileName))
+				_stream.Dispose();
+				if (_deleteFile && isFileStream && File.Exists(_fileName))
 				{
 					File.Delete(_fileName);
 				}
 			}
+			base.Dispose(disposing);
 		}
 	}
 }

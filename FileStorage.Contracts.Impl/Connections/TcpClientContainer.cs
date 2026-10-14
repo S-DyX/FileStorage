@@ -218,7 +218,12 @@ namespace FileStorage.Contracts.Impl.Connections
 					if (commands.Count > 0)
 					{
 						_localLogger?.Info($"Received commands: {commands.Count}");
-						_messageProcessingService.Process(commands, this);
+						var response = _messageProcessingService.Process(commands, this);
+						// Ответ с ошибкой обработки раньше не отправлялся: клиент ждал его до таймаута (10 с).
+						if (response?.Bytes != null)
+						{
+							Broadcast(response.Bytes);
+						}
 					}
 				}
 				catch (ObjectDisposedException ode)

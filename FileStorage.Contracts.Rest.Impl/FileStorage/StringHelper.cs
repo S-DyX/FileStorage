@@ -9,17 +9,12 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
     {
         public static string GetSha1Hash(this string value)
         {
-            if (string.IsNullOrEmpty(value))
-                return string.Empty;
-
-            var hash = string.Empty;
+            // Как на сервере (FileStorage.Core): пустой и null id хешируются как пустая строка.
+            // Раньше здесь возвращалась пустая строка, и id расходились с серверными.
             using (var sha1 = SHA1.Create())
             {
-                var data = value ?? string.Empty;
-                sha1.ComputeHash(Encoding.UTF8.GetBytes(data));
-                hash = sha1.Hash.GetHashString();
+                return sha1.ComputeHash(Encoding.UTF8.GetBytes(value ?? string.Empty)).GetHashString();
             }
-            return hash;
         }
         public static string GetHashString(this byte[] hash)
         {
@@ -64,8 +59,14 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
         {
             if (bytes == null || bytes.Length == 0)
                 return null;
-            var chars = new char[bytes.Length / sizeof(char)];
-            Buffer.BlockCopy(bytes, 0, chars, 0, bytes.Length);
+            // Символ занимает 2 байта. При нечётной длине последний неполный байт заменяем на U+FFFD;
+            // раньше Buffer.BlockCopy падал с ArgumentException.
+            var charCount = bytes.Length / sizeof(char);
+            var hasTail = bytes.Length % sizeof(char) != 0;
+            var chars = new char[charCount + (hasTail ? 1 : 0)];
+            Buffer.BlockCopy(bytes, 0, chars, 0, charCount * sizeof(char));
+            if (hasTail)
+                chars[charCount] = '�';
             return new string(chars);
         }
     }

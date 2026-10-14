@@ -51,7 +51,23 @@ namespace FileStorage.Contracts.Impl.Connections
         public long Size { get; set; }
         public string SessionId { get; set; }
 
-        public bool IsExists   { get; set; }    
+        public bool IsExists { get; set; }
+
+        /// <summary>
+        /// Смещение для чтения части файла (команда Read)
+        /// </summary>
+        public long Offset { get; set; }
+
+        /// <summary>
+        /// Сколько байт прочитать начиная с Offset; 0 — весь файл (как раньше)
+        /// </summary>
+        public long Length { get; set; }
+
+        /// <summary>
+        /// Сервер вернул только запрошенную часть (Offset/Length). Старый сервер этот признак не выставляет
+        /// и возвращает файл целиком — тогда клиент вырезает нужную часть сам.
+        /// </summary>
+        public bool IsPartial { get; set; }
     }
 
 	    public sealed class MoveMessage

@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <Platforms>AnyCPU;x64</Platforms>
     <StartupObject>FileStorage.Api.Host.Program</StartupObject>
     <UserSecretsId>c8b4b51f-91bc-4850-a606-726c78c4f1a8</UserSecretsId>

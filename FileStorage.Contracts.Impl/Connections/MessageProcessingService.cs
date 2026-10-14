@@ -70,6 +70,11 @@ namespace FileStorage.Contracts.Impl.Connections
 				catch (Exception e)
 				{
 					error = message ?? new TcpCommonMessage();
+					// содержимое файла из запроса обратно не отправляем
+					if (error.ReadCommand != null)
+						error.ReadCommand.Content = null;
+					if (error.WriteCommand != null)
+						error.WriteCommand.Content = null;
 					error.Error = new ErrorChatMessage() { Error = e.Message };
 					error.Type = TcpMessageType.InternalServerError;
 					// саму команду (в ней может быть содержимое файла) в лог не пишем
@@ -143,16 +148,28 @@ namespace FileStorage.Contracts.Impl.Connections
 						return null;
 					}
 
-					if (!string.IsNullOrEmpty(messageReadCommand.FolderId))
 					{
-						var info = GetFolderStorageInfo(messageReadCommand);
-						tcpCommonMessage.ReadCommand.Content = _folderStorageService.GetBytes(info);
-						@from.Broadcast(tcpCommonMessage);
-					}
-					else if (!string.IsNullOrEmpty(messageReadCommand.FileId))
-					{
-						tcpCommonMessage.ReadCommand.Content = _fileStorageService.GetBytes(messageReadCommand.FileId, messageReadCommand.StorageName);
-						@from.Broadcast(tcpCommonMessage);
+						// Length > 0 — чтение части файла (Offset/Length); иначе, как раньше, файл целиком.
+						// Признак IsPartial сообщает клиенту, что вернулась только запрошенная часть.
+						var partial = messageReadCommand.Length > 0;
+						var length = (int)Math.Min(messageReadCommand.Length, int.MaxValue);
+						if (!string.IsNullOrEmpty(messageReadCommand.FolderId))
+						{
+							var info = GetFolderStorageInfo(messageReadCommand);
+							tcpCommonMessage.ReadCommand.Content = partial
+								? _folderStorageService.GetBytesOffset(info, messageReadCommand.Offset, length)
+								: _folderStorageService.GetBytes(info);
+							tcpCommonMessage.ReadCommand.IsPartial = partial;
+							@from.Broadcast(tcpCommonMessage);
+						}
+						else if (!string.IsNullOrEmpty(messageReadCommand.FileId))
+						{
+							tcpCommonMessage.ReadCommand.Content = partial
+								? _fileStorageService.GetBytesOffset(messageReadCommand.FileId, messageReadCommand.Offset, length, messageReadCommand.StorageName)
+								: _fileStorageService.GetBytes(messageReadCommand.FileId, messageReadCommand.StorageName);
+							tcpCommonMessage.ReadCommand.IsPartial = partial;
+							@from.Broadcast(tcpCommonMessage);
+						}
 					}
 					break;
 				case TcpMessageType.IsExistsByExternalId:

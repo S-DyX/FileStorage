@@ -18,7 +18,10 @@ namespace FileStorage.Core
         {
             var builder = new ConfigurationBuilder()
                    .SetBasePath(Directory.GetCurrentDirectory())
-                   .AddJsonFile("filestorage.json", optional: true, reloadOnChange: false);
+                   .AddJsonFile("filestorage.json", optional: true, reloadOnChange: false)
+                   // Переменные окружения с префиксом FILESTORAGE_ переопределяют filestorage.json,
+                   // например FILESTORAGE_Connection__Tcp__Address=0.0.0.0 в контейнере
+                   .AddEnvironmentVariables("FILESTORAGE_");
             var configuration = builder.Build();
 
             RootDirectory = configuration.GetSection("RootDirectory")?.Value ?? RootDirectory;

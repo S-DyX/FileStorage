@@ -41,14 +41,20 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			{
 				try
 				{
-					if (_isAuth && IsConnected)
+					// Раньше условие было _lastSend > UtcNow + 5 с — оно никогда не выполнялось, и пинг не отправлялся.
+					// Пинг идёт под той же блокировкой, что и запросы, чтобы кадры не перемешались в сокете.
+					if (_isAuth && IsConnected && _lastSend < DateTime.UtcNow.AddSeconds(-5) && Monitor.TryEnter(_sync))
 					{
-						if (_lastSend > DateTime.UtcNow.AddSeconds(5))
+						try
 						{
 							Send(new TcpCommonMessage()
 							{
 								Type = TcpMessageType.Ping
-							});
+							}, true);
+						}
+						finally
+						{
+							Monitor.Exit(_sync);
 						}
 					}
 
@@ -57,7 +63,6 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 				catch
 				{
 					_isAuth = false;
-
 				}
 			}
 		}
@@ -96,9 +101,12 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 				Type = TcpMessageType.OpenConnection,
 			};
 
+			// после переподключения недочитанные кадры прежнего соединения не нужны
+			_frameReader.Clear();
 			var bytes = authMessage.GetCommonMessage();
 			_clientSocket.Client.SendBytes(bytes);
-			var result = Receive();
+			// ждём ответ именно на рукопожатие
+			GetMessage(authMessage.RequestId);
 
 			if (_clientSocket.Connected)
 			{
@@ -106,32 +114,28 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			}
 		}
 		private DateTime _lastSend = DateTime.UtcNow;
-		public TcpCommonMessage GetMessage(string requestId)
-		{
-			TcpCommonMessage data = null;
-			var temp = new List<byte>(255);
-			var bytes = Receive();
-			temp.AddRange(bytes);
-			while (!temp.IsReadToEndCommands())
-			{
-				bytes = Receive();
-				temp.AddRange(bytes);
-			}
 
-			bytes = temp.ToArray();
-			var commands = bytes.GetCommands();
-			foreach (var command in commands)
+		// кадры ответов, полученные частично, дочитываются при следующем Receive
+		private readonly TcpFrameReader _frameReader = new TcpFrameReader();
+		public TcpCommonMessage GetMessage(string requestId, int timeout = 10000)
+		{
+			// Читаем кадры, пока не придёт ответ именно на этот запрос. Раньше разбирался только первый кадр,
+			// и кадр считался полным раньше времени: запоздавший ответ на прерванный запрос или неполный кадр
+			// давали null вместо ответа.
+			var deadline = DateTime.UtcNow.AddMilliseconds(timeout);
+			while (true)
 			{
-				if (string.IsNullOrWhiteSpace(command))
-					continue;
-				var deserializeObject = JsonConvert.DeserializeObject<TcpCommonMessage>(command);
-				if (deserializeObject != null && deserializeObject.RequestId == requestId)
+				var remaining = (int)(deadline - DateTime.UtcNow).TotalMilliseconds;
+				if (remaining <= 0)
+					throw new TimeoutException();
+				var bytes = Receive(remaining);
+				foreach (var command in _frameReader.Append(bytes, bytes.Length))
 				{
-					data = deserializeObject;
+					var message = JsonConvert.DeserializeObject<TcpCommonMessage>(command);
+					if (message != null && message.RequestId == requestId)
+						return message;
 				}
 			}
-
-			return data;
 		}
 
 
@@ -230,20 +234,19 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		}
 		public byte[] Receive(int timeout = 10000)
 		{
-			int i = 0;
-			var iter = timeout / 10;
-			while (_clientSocket.Connected && _clientSocket.Available < 100 && i < iter)
+			var client = _clientSocket;
+			var deadline = DateTime.UtcNow.AddMilliseconds(timeout);
+			// Ждём любые данные. Раньше ждали минимум 100 байт, и на коротком ответе уходило 10 с до таймаута.
+			while (client != null && client.Connected && client.Available == 0 && DateTime.UtcNow < deadline)
 			{
-				Thread.Sleep(10);
-				i++;
+				Thread.Sleep(1);
 			}
 
-			if (_clientSocket.Available == 0)
+			if (client == null || client.Available == 0)
 				throw new TimeoutException();
 
-			byte[] buffer = new byte[_clientSocket.Available];
-
-			int size = _clientSocket.Client.Receive(buffer);
+			var buffer = new byte[client.Available];
+			var size = client.Client.Receive(buffer);
 			// Receive может прочитать меньше, чем Available: раньше хвост из нулей попадал в разбор ответа
 			if (size < buffer.Length)
 				Array.Resize(ref buffer, size);

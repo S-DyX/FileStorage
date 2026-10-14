@@ -27,21 +27,26 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 
 		public override void Flush()
 		{
-			throw new NotImplementedException();
+			// поток только для чтения — сбрасывать нечего (раньше Flush бросал исключение,
+			// и падали обёртки, которые вызывают его при закрытии)
 		}
 
 		public override int Read(byte[] buffer, int offset, int count)
 		{
-			if (offset + count > _length)
-			{
-				count = (int)(_length - offset);
-			}
-			var tmp = _func.Invoke(_externalFolderId, _externalFileId, _position, count, _storageName);
-			if (tmp == null)
+			// Раньше конец файла проверялся по смещению в buffer, а не по текущей позиции; данные копировались
+			// в начало buffer, а не начиная с offset; позиция сдвигалась на запрошенное, а не на полученное
+			// число байт; ответ длиннее count приводил к исключению.
+			if (_position >= _length || count <= 0)
 				return 0;
-			_position += count;
-			tmp.CopyTo(buffer, 0);
-			return tmp.Length;
+			if (_position + count > _length)
+				count = (int)(_length - _position);
+			var tmp = _func.Invoke(_externalFolderId, _externalFileId, _position, count, _storageName);
+			if (tmp == null || tmp.Length == 0)
+				return 0;
+			var read = Math.Min(tmp.Length, count);
+			Buffer.BlockCopy(tmp, 0, buffer, offset, read);
+			_position += read;
+			return read;
 		}
 
 		public override long Seek(long offset, SeekOrigin origin)
@@ -52,7 +57,8 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			}
 			else if (origin == SeekOrigin.End)
 			{
-				_position = _length - offset;
+				// смещение от конца обычно отрицательное; раньше считалось как _length - offset
+				_position = _length + offset;
 			}
 			else if (origin == SeekOrigin.Current)
 			{
@@ -64,12 +70,12 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 
 		public override void SetLength(long value)
 		{
-			throw new NotImplementedException();
+			throw new NotSupportedException();
 		}
 
 		public override void Write(byte[] buffer, int offset, int count)
 		{
-			throw new NotImplementedException();
+			throw new NotSupportedException();
 		}
 
 		public override bool CanRead => true;

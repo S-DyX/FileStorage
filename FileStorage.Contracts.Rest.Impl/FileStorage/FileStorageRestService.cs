@@ -1,6 +1,7 @@
 ﻿using Newtonsoft.Json;
 using Service.Registry.Common.Entities;
 using Service.Registry.Utils;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -151,6 +152,14 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <param name="storageName"></param>
 		/// <returns></returns>
 		bool Delete(string fileId, string storageName);
+
+		/// <summary>
+		/// Delete file from FS by id from your system
+		/// </summary>
+		/// <param name="externalFileId">this is file id from your system</param>
+		/// <param name="storageName"></param>
+		/// <returns>true, if the file existed and was deleted</returns>
+		bool DeleteByExternalId(string externalFileId, string storageName);
 	}
 
 	/// <summary>
@@ -210,42 +219,18 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		public string GetIdByExternal(string externalId)
 		{
 			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var responseJson = RunSyncUtil.RunSync(() => client.GetStringAsync($"{_apiV1}external?id={externalId}"));
-
+			var responseJson = RestHelper.GetString(client, $"{_apiV1}external?id={RestHelper.Encode(externalId)}");
 			var response = JsonConvert.DeserializeAnonymousType(responseJson, new { InternalId = default(string) });
-
-			return response.InternalId;
-
-			//using (var client = new WebClient())
-			//{
-			//	client.Encoding = Encoding.UTF8;
-
-			//	var responseJson = client.DownloadString($"{_apiV1}external?id={externalId}");
-			//	var response = JsonConvert.DeserializeAnonymousType(responseJson, new { InternalId = default(string) });
-
-			//	return response.InternalId;
-			//}
+			return response?.InternalId;
 		}
 
 		public long GetCount(string storageName)
 		{
 			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var responseJson = RunSyncUtil.RunSync(() => client.GetStringAsync($"{_apiV1}count"));
+			// раньше имя хранилища не передавалось, и возвращалось число файлов хранилища по умолчанию
+			var responseJson = RestHelper.GetString(client, RestHelper.WithName($"{_apiV1}count", storageName));
 			var response = JsonConvert.DeserializeAnonymousType(responseJson, new { Count = default(long) });
-
-			return response.Count;
-
-			//using (var client = new WebClient())
-			//{
-			//	client.Encoding = Encoding.UTF8;
-
-			//	var responseJson = client.DownloadString($"{_apiV1}count");
-			//	var response = JsonConvert.DeserializeAnonymousType(responseJson, new { Count = default(long) });
-
-			//	return response.Count;
-			//}
+			return response?.Count ?? 0;
 		}
 
 		#endregion
@@ -275,8 +260,6 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		private void Write(string fileId, byte[] bytes, string storageName, bool close, string sessionId)
 		{
 			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var url = $"{_apiV1}savebytes?name={storageName}";
 			var request = new SaveBytesRequest
 			{
 				Id = fileId,
@@ -284,29 +267,8 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 				Close = close,
 				SessionId = sessionId
 			};
-			var json = new StringContent(JsonConvert.SerializeObject(request, Formatting.Indented), Encoding.UTF8,
-				"application/json");
-			//var obj = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(request, Formatting.Indented));
-			RunSyncUtil.RunSync(() => client.PostAsync(url, json));
-
-
-
-			//using (var client = new WebClient())
-			//{
-			//	client.Headers.Add("Content-Type", " application/problem+json");
-			//	client.Encoding = Encoding.UTF8;
-
-
-			//	var url = $"{_apiV1}savebytes?name={storageName}";
-			//	var request = new SaveBytesRequest
-			//	{
-			//		Id = id,
-			//		Bytes = bytes,
-			//		Close = close
-			//	};
-			//	var obj = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(request, Formatting.Indented));
-			//	client.UploadData(url, "POST", obj);
-			//}
+			// ответ сервера проверяется: раньше ошибка записи терялась молча
+			RestHelper.PostJson(client, RestHelper.WithName($"{_apiV1}savebytes", storageName), request);
 		}
 		/// <summary>
 		/// Return exist id in FS by externalId
@@ -317,38 +279,17 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		public string GetExistIdByExternal(string externalId, string storageName)
 		{
 			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}exists/External?id={externalId}";
-			var responseJson = RunSyncUtil.RunSync(() =>
-				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
+			var address = RestHelper.WithName($"{_apiV1}exists/External?id={RestHelper.Encode(externalId)}", storageName);
+			var responseJson = RestHelper.GetString(client, address);
 			var response = JsonConvert.DeserializeAnonymousType(responseJson, new
 			{
 				Exists = default(bool),
 				Id = default(string)
 			});
 
-			return response.Exists
+			return response != null && response.Exists
 				? response.Id
 				: null;
-
-
-			//using (var client = new WebClient())
-			//{
-			//	client.Headers.Add("Content-Type", " application/problem+json");
-			//	client.Encoding = Encoding.UTF8;
-
-			//	var address = $"{_apiV1}exists/External?id={externalId}";
-			//	var responseJson = client.DownloadString(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}");
-			//	var response = JsonConvert.DeserializeAnonymousType(responseJson, new
-			//	{
-			//		Exists = default(bool),
-			//		Id = default(string)
-			//	});
-
-			//	return response.Exists
-			//		? response.Id
-			//		: null;
-			//}
 		}
 		/// <summary>
 		/// Return file size
@@ -359,25 +300,10 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		public long GetSize(string fileId, string storageName)
 		{
 			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}size?Id={fileId}";
-			var responseJson = RunSyncUtil.RunSync(() =>
-				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
+			var address = RestHelper.WithName($"{_apiV1}size?id={RestHelper.Encode(fileId)}", storageName);
+			var responseJson = RestHelper.GetString(client, address);
 			var response = JsonConvert.DeserializeAnonymousType(responseJson, new { Size = default(long) });
-
-			return response.Size;
-
-			//using (var client = new WebClient())
-			//{
-			//	client.Headers.Add("Content-Type", " application/problem+json");
-			//	client.Encoding = Encoding.UTF8;
-
-			//	var address = $"{_apiV1}size?Id={id}";
-			//	var responseJson = client.DownloadString(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}");
-			//	var response = JsonConvert.DeserializeAnonymousType(responseJson, new { Size = default(long) });
-
-			//	return response.Size;
-			//}
+			return response?.Size ?? 0;
 		}
 		/// <summary>
 		/// Is exists on FS
@@ -388,23 +314,10 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		public bool Exists(string fileId, string storageName)
 		{
 			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}exists?id={fileId}";
-			var responseJson = RunSyncUtil.RunSync(() =>
-				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
+			var address = RestHelper.WithName($"{_apiV1}exists?id={RestHelper.Encode(fileId)}", storageName);
+			var responseJson = RestHelper.GetString(client, address);
 			var response = JsonConvert.DeserializeAnonymousType(responseJson, new { Exists = default(bool) });
-
-			return response.Exists;
-
-			//using (var client = new WebClient())
-			//{
-			//	client.Encoding = Encoding.UTF8;
-
-			//	var address = $"{_apiV1}exists?id={hash}";
-			//	var responseJson = client.DownloadString(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}");
-			//	var response = JsonConvert.DeserializeAnonymousType(responseJson, new { Exists = default(bool) });
-
-			//	return response.Exists;
+			return response?.Exists ?? false;
 		}
 		/// <summary>
 		/// Is exists by externalId
@@ -414,33 +327,8 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <returns></returns>
 		public bool IsExistsByExternalId(string externalId, string storageName)
 		{
-			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}exists/External?Id={externalId}&name={storageName}";
-			var responseJson = RunSyncUtil.RunSync(() =>
-				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
-			var response = JsonConvert.DeserializeAnonymousType(responseJson, new
-			{
-				Exists = default(bool),
-				Id = default(string)
-			});
-
-			return response.Exists;
-
-			//using (var client = new WebClient())
-			//{
-			//	client.Encoding = Encoding.UTF8;
-
-			//	var address = $"{_apiV1}exists/External?Id={externalId}";
-			//	var responseJson = client.DownloadString(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}");
-			//	var response = JsonConvert.DeserializeAnonymousType(responseJson, new
-			//	{
-			//		Exists = default(bool),
-			//		Id = default(string)
-			//	});
-
-			//	return response.Exists;
-			//}
+			// раньше параметр name попадал в запрос дважды, и сервер получал имя хранилища вида "name,name"
+			return !string.IsNullOrEmpty(GetExistIdByExternal(externalId, storageName));
 		}
 
 		/// <summary>
@@ -496,26 +384,14 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <returns></returns>
 		public byte[] GetBytes(string fileId, long offset, long size, string storageName)
 		{
-			if (size == 0)
+			if (size <= 0)
 				return null;
 
 			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var url = $"{_apiV1}getbytes?id={fileId}&offset={offset}&count={size}&name={storageName}";
-			var str = RunSyncUtil.RunSync(() => client.GetStringAsync(url));
+			var url = RestHelper.WithName($"{_apiV1}getbytes?id={RestHelper.Encode(fileId)}&offset={offset}&count={size}", storageName);
+			var str = RestHelper.GetString(client, url);
 			var data = JsonConvert.DeserializeObject<GetBytesResult>(str);
-			return data.Bytes;
-
-
-			//var url = $"{_apiV1}getbytes?id={id}&offset={offset}&count={size}&name={storageName}";
-			//using (var client = new WebClient())
-			//{
-			//	client.Encoding = Encoding.UTF8;
-			//	var str = client.DownloadString(url);
-			//	var data = JsonConvert.DeserializeObject<GetBytesResult>(str);
-			//	return data.Bytes;
-			//}
-
+			return data?.Bytes;
 		}
 		/// <summary>
 		/// Delete file from FS
@@ -525,33 +401,56 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <returns></returns>
 		public bool Delete(string fileId, string storageName)
 		{
+			// Сервер отвечает пустым 200 OK, поэтому разбор тела ответа всегда давал false.
+			// Теперь true — если файл был и запрос на удаление выполнен успешно.
+			if (!Exists(fileId, storageName))
+				return false;
 			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}delete?Id={fileId}";
-			var responseJson = RunSyncUtil.RunSync(() =>
-				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
-			var response = JsonConvert.DeserializeAnonymousType(responseJson, new
-			{
-				Exists = default(bool),
-				Id = default(string)
-			});
+			return RestHelper.GetOk(client, RestHelper.WithName($"{_apiV1}delete?id={RestHelper.Encode(fileId)}", storageName));
+		}
 
-			return response?.Exists ?? false;
+		/// <summary>
+		/// <see cref="IFileStorageRestService.DeleteByExternalId(string, string)"/>
+		/// </summary>
+		public bool DeleteByExternalId(string externalFileId, string storageName)
+		{
+			if (!IsExistsByExternalId(externalFileId, storageName))
+				return false;
+			var client = ClientFactory.CreateClient();
+			return RestHelper.GetOk(client, RestHelper.WithName($"{_apiV1}delete/external?id={RestHelper.Encode(externalFileId)}", storageName));
+		}
 
-			//using (var client = new WebClient())
-			//{
-			//	client.Encoding = Encoding.UTF8;
+		/// <summary>
+		/// Names of the storages created on the server
+		/// </summary>
+		public List<string> GetStorageNames()
+		{
+			var client = ClientFactory.CreateClient();
+			var responseJson = RestHelper.GetString(client, $"{_apiV1}list");
+			return JsonConvert.DeserializeObject<List<string>>(responseJson) ?? new List<string>();
+		}
 
-			//	var address = $"{_apiV1}delete?Id={id}";
-			//	var responseJson = client.DownloadString(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}");
-			//	var response = JsonConvert.DeserializeAnonymousType(responseJson, new
-			//	{
-			//		Exists = default(bool),
-			//		Id = default(string)
-			//	});
+		/// <summary>
+		/// Opens the file for sequential reading directly from the HTTP response, without base64 and chunks
+		/// (unlike <see cref="GetStream"/>, the stream is not seekable). Returns null if the file does not exist.
+		/// </summary>
+		/// <param name="fileId">FS internal id</param>
+		/// <param name="storageName"></param>
+		public Stream OpenRead(string fileId, string storageName)
+		{
+			var client = ClientFactory.CreateClient();
+			return RestHelper.OpenRead(client, RestHelper.WithName($"{_apiV1}stream?id={RestHelper.Encode(fileId)}", storageName));
+		}
 
-			//	return response?.Exists ?? false;
-			//}
+		/// <summary>
+		/// Same as <see cref="OpenRead"/>, by id from your system
+		/// </summary>
+		/// <param name="externalFileId">this is file id from your system</param>
+		/// <param name="storageName"></param>
+		public Stream OpenReadByExternalId(string externalFileId, string storageName)
+		{
+			var client = ClientFactory.CreateClient();
+			return RestHelper.OpenRead(client, RestHelper.WithName($"{_apiV1}stream/external?id={RestHelper.Encode(externalFileId)}", storageName));
 		}
 
 		#endregion

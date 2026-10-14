@@ -1,324 +1,103 @@
-﻿using Newtonsoft.Json;
-using Service.Registry.Common.Entities;
-using Service.Registry.Utils;
+﻿using Service.Registry.Common.Entities;
+using System;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
-using System.Text;
 
 namespace FileStorage.Contracts.Rest.Impl.FileStorage
 {
-
-
 	/// <summary>
-	/// Impl <see cref="IFolderStorageRestService"/>
+	/// Previous version of <see cref="FolderStorageRestService"/>: <see cref="GetStream"/> reads the whole file
+	/// into memory (or a temporary file for large files) instead of reading it on demand.
+	/// All other methods are delegated to <see cref="FolderStorageRestService"/>.
 	/// </summary>
+	/// <remarks>
+	/// Раньше класс был полной копией FolderStorageRestService со всеми его ошибками
+	/// (двойное хеширование id в Read, Delete всегда false, имя хранилища не передавалось в GetCount и т. д.).
+	/// </remarks>
+	[Obsolete("Use FolderStorageRestService")]
 	public sealed class FolderStorageRestServiceOld : RestClientResponseBase, IFolderStorageRestService
 	{
-		private readonly string _apiV1;
+		private readonly FolderStorageRestService _service;
 
 		/// <summary>
 		/// Ctor
 		/// </summary>
-		/// <param name="settings"><see cref="RestClientResponseSettings"/></param>
+		/// <param name="settings"></param>
 		public FolderStorageRestServiceOld(RestClientResponseSettings settings) : base(settings)
 		{
-			if (Settings.Host.EndsWith("/"))
-				_apiV1 = $"{Settings.Host}api/v1/folderStorage/";
-			else
-				_apiV1 = $"{Settings.Host}/api/v1/folderStorage/";
+			_service = new FolderStorageRestService(settings);
 		}
 
 		/// <summary>
 		/// Ctor
 		/// </summary>
-		/// <param name="settings"><see cref="RestClientResponseSettings"/></param>
-		/// <param name="client"><see cref="IHttpClientFactory"/></param>
+		/// <param name="settings"></param>
+		/// <param name="client"></param>
 		public FolderStorageRestServiceOld(RestClientResponseSettings settings, IHttpClientFactory client) : base(settings, client)
 		{
-			if (Settings.Host.EndsWith("/"))
-				_apiV1 = $"{Settings.Host}api/v1/folderStorage/";
-			else
-				_apiV1 = $"{Settings.Host}/api/v1/folderStorage/";
+			_service = new FolderStorageRestService(settings, client);
 		}
 
-		#region V1
+		/// <inheritdoc />
+		public string GetIdByExternal(string externalId) => _service.GetIdByExternal(externalId);
 
-		public string GetIdByExternal(string externalId)
-		{
-			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var responseJson = RunSyncUtil.RunSync(() =>
-			{
-				var requestUri = $"{_apiV1}external?id={externalId}";
-				return client.GetStringAsync(requestUri);
-			});
+		/// <inheritdoc />
+		public long GetCount(string storageName) => _service.GetCount(storageName);
 
-			var response = JsonConvert.DeserializeAnonymousType(responseJson, new { InternalId = default(string) });
-
-			return response.InternalId;
-		}
-
-		public long GetCount(string storageName)
-		{
-			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var responseJson = RunSyncUtil.RunSync(() => client.GetStringAsync($"{_apiV1}count"));
-			var response = JsonConvert.DeserializeAnonymousType(responseJson, new { Count = default(long) });
-
-			return response.Count;
-
-		}
-
-		#endregion
-
-		#region V2
-
-		/// <summary>
-		/// <see cref="IFolderStorageRestService.Write(string,string,string,byte[],string)"/>
-		/// </summary>
-		/// <param name="externalFolderId"></param>
-		/// <param name="externalFileId"></param>
-		/// <param name="bytes"></param>
-		/// <param name="storageName"></param>
-		/// <param name="sessionId"></param>
+		/// <inheritdoc />
 		public void Write(string externalFolderId, string externalFileId, string storageName, byte[] bytes, string sessionId)
-		{
-			Write(externalFolderId, externalFileId, storageName, bytes, true, sessionId);
-		}
+			=> _service.Write(externalFolderId, externalFileId, storageName, bytes, sessionId);
 
-		/// <summary>
-		/// <see cref="IFolderStorageRestService.Write(string,string,string,System.IO.Stream,string)"/>
-		/// </summary>
-		/// <param name="externalFolderId"></param>
-		/// <param name="externalFileId"></param>
-		/// <param name="storageName"></param>
-		/// <param name="bytes"></param>
-		/// <param name="close"></param>
-		/// <param name="sessionId"></param>
-		private void Write(string externalFolderId, string externalFileId, string storageName, byte[] bytes, bool close, string sessionId)
-		{
-			var folderId = externalFolderId.GetSha1Hash();
-			var fileId = externalFileId.GetSha1Hash();
-			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var url = $"{_apiV1}savebytes?name={storageName}";
-			var request = new SaveBytesRequest
-			{
-				Id = fileId,
-				Bytes = bytes,
-				Close = close,
-				SessionId = sessionId,
-				FolderId = folderId
-
-			};
-			var json = new StringContent(JsonConvert.SerializeObject(request, Formatting.Indented), Encoding.UTF8,
-				"application/json");
-			client.PostAsync(url, json).Wait();
-		}
-
-		public string GetExistIdByExternal(string externalFolderId, string externalFileId, string storageName)
-		{
-			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}exists/External?folderId={externalFolderId}&fileId={externalFileId}";
-			var responseJson = RunSyncUtil.RunSync(() =>
-				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
-			var response = JsonConvert.DeserializeAnonymousType(responseJson, new
-			{
-				Exists = default(bool),
-				Id = default(string)
-			});
-
-			return response.Exists
-				? response.Id
-				: null;
-		}
-
-		public long GetSize(string externalFolderId, string externalFileId, string storageName)
-		{
-			var folderId = externalFolderId.GetSha1Hash();
-			var fileId = externalFileId.GetSha1Hash();
-			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}size?folderId={folderId}&fileId={fileId}";
-			var responseJson = RunSyncUtil.RunSync(() =>
-				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
-			var response = JsonConvert.DeserializeAnonymousType(responseJson, new { Size = default(long) });
-
-			return response.Size;
-
-		}
-
-		public bool IsExists(string externalFolderId, string externalFileId, string storageName)
-		{
-			var folderId = externalFolderId.GetSha1Hash();
-			var fileId = externalFileId.GetSha1Hash();
-			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}exists?folderId={folderId}&fileId={fileId}";
-			var responseJson = RunSyncUtil.RunSync(() =>
-				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
-			var response = JsonConvert.DeserializeAnonymousType(responseJson, new { Exists = default(bool) });
-
-			return response.Exists;
-
-		}
-		/// <summary>
-		/// 
-		/// </summary>
-		/// <param name="externalFolderId"></param>
-		/// <param name="externalFileId"></param>
-		/// <param name="storageName"></param>
-		/// <returns></returns>
-		public bool IsExistsByExternalId(string externalFolderId, string externalFileId, string storageName)
-		{
-			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}exists/External?folderId={externalFolderId}&fileId={externalFileId}";
-			var responseJson = RunSyncUtil.RunSync(() =>
-				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
-			var response = JsonConvert.DeserializeAnonymousType(responseJson, new
-			{
-				Exists = default(bool),
-				Id = default(string)
-			});
-
-			return response.Exists;
-
-		}
-
+		/// <inheritdoc />
 		public void Write(string externalFolderId, string externalFileId, string storageName, Stream stream, string sessionId)
-		{
-			var len = stream.Length;
-			if (len == 0)
-				return;
-			// Блоки по 64 КБ, у последнего — признак закрытия. Раньше при размере потока, кратном блоку,
-			// файл не закрывался, а каждый блок копировался через Take().ToArray().
-			stream.WriteChunks(64 * 1024, (chunk, close) => Write(externalFolderId, externalFileId, storageName, chunk, close, sessionId));
-		}
+			=> _service.Write(externalFolderId, externalFileId, storageName, stream, sessionId);
 
+		/// <inheritdoc />
 		public void Read(string externalFolderId, string externalFileId, string storageName, Stream stream)
-		{
-			var folderId = externalFolderId.GetSha1Hash();
-			var fileId = externalFileId.GetSha1Hash();
-			const int constSize = 100000;
-			long offset = 0;
-			long size = constSize;
-			var totalLen = GetSize(folderId, fileId, storageName);
-			if (totalLen == 0)
-				return;
-			byte[] bytes;
-			do
-			{
-				if (offset + size > totalLen)
-				{
-					size = totalLen - offset;
-				}
+			=> _service.Read(externalFolderId, externalFileId, storageName, stream);
 
-				bytes = Read(folderId, fileId, offset, size, storageName);
-				if (bytes == null)
-					return;
-				stream.Write(bytes, 0, bytes.Length);
-				offset += bytes.Length;
-			} while (offset < totalLen);
-		}
+		/// <inheritdoc />
+		public long GetSize(string externalFolderId, string externalFileId, string storageName)
+			=> _service.GetSize(externalFolderId, externalFileId, storageName);
+
+		/// <inheritdoc />
+		public bool IsExists(string externalFolderId, string externalFileId, string storageName)
+			=> _service.IsExists(externalFolderId, externalFileId, storageName);
+
+		/// <inheritdoc />
+		public string GetExistIdByExternal(string externalFolderId, string externalFileId, string storageName)
+			=> _service.GetExistIdByExternal(externalFolderId, externalFileId, storageName);
+
+		/// <inheritdoc />
+		public bool IsExistsByExternalId(string externalFolderId, string externalFileId, string storageName)
+			=> _service.IsExistsByExternalId(externalFolderId, externalFileId, storageName);
+
+		/// <inheritdoc />
 		public byte[] Read(string externalFolderId, string externalFileId, long offset, long size, string storageName)
-		{
-			if (size == 0)
-				return null;
+			=> _service.Read(externalFolderId, externalFileId, offset, size, storageName);
 
-			var folderId = externalFolderId.GetSha1Hash();
-			var fileId = externalFileId.GetSha1Hash();
-			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var url = $"{_apiV1}getbytes?folderId={folderId}&fileId={fileId}&offset={offset}&count={size}&name={storageName}";
-			var str = RunSyncUtil.RunSync(() => client.GetStringAsync(url));
-			var data = JsonConvert.DeserializeObject<GetBytesResult>(str);
-			return data.Bytes;
-
-
-			//var url = $"{_apiV1}getbytes?id={id}&offset={offset}&count={size}&name={storageName}";
-			//using (var client = new WebClient())
-			//{
-			//	client.Encoding = Encoding.UTF8;
-			//	var str = client.DownloadString(url);
-			//	var data = JsonConvert.DeserializeObject<GetBytesResult>(str);
-			//	return data.Bytes;
-			//}
-
-		}
+		/// <inheritdoc />
 		public bool Delete(string externalFolderId, string externalFileId, string storageName)
-		{
-			var folderId = externalFolderId.GetSha1Hash();
-			var fileId = externalFileId.GetSha1Hash();
-			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}delete?folderId={folderId}&fileId={fileId}";
-			var responseJson = RunSyncUtil.RunSync(() =>
-				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
-			var response = JsonConvert.DeserializeAnonymousType(responseJson, new
-			{
-				Exists = default(bool),
-				Id = default(string)
-			});
-
-			return response?.Exists ?? false;
-		}
+			=> _service.Delete(externalFolderId, externalFileId, storageName);
 
 		/// <summary>
-		/// 50 Мб
+		/// Reads the whole file into memory (or a temporary file for large files) and returns it
 		/// </summary>
-		private static int _maxLen = 1024 * 1024 * 20;
 		public Stream GetStream(string externalFolderId, string externalFileId, string name)
 		{
-			if (IsExists(externalFolderId, externalFileId, name))
-			{
+			if (!_service.IsExists(externalFolderId, externalFileId, name))
+				return null;
 
-				var size = GetSize(externalFolderId, externalFileId, name);
-
-				var result = new MixedMemoryStream();
-
-				var len = size / 10;
-				if (len > 1024 * 1024 * 20)
-					len = _maxLen;
-				var buffer = new byte[len];
-				var offset = 0l;
-
-				while (offset < size)
-				{
-					buffer = Read(externalFolderId, externalFileId, offset, buffer.Length, name);
-					if (buffer == null)
-						break;
-					offset += buffer.Length;
-					result.Write(buffer, 0, buffer.Length);
-				}
-
-				result.Seek(0, SeekOrigin.Begin);
-				//Save to cache
-				//var bytes = new byte[result.Length];
-				///result.Read(bytes, 0, bytes.Length);
-				//_cache[internalId] = bytes;
-
-				result.Seek(0, SeekOrigin.Begin);
-				return result;
-			}
-			return null;
+			// Временный файл удаляется при закрытии потока: раньше он оставался в каталоге Temp.
+			// Раньше файлы меньше 10 байт возвращались пустыми: буфер размером size / 10 был нулевым.
+			var result = new MixedMemoryStream(true);
+			_service.Read(externalFolderId, externalFileId, name, result);
+			result.Seek(0, SeekOrigin.Begin);
+			return result;
 		}
 
+		/// <inheritdoc />
 		public void Move(string externalFolderId, string toExternalFolderId, string externalFileId, string storageName)
-		{
-			var toFolderId = toExternalFolderId.GetSha1Hash();
-			var fromFolderId = externalFolderId.GetSha1Hash();
-			var fileId = externalFileId.GetSha1Hash();
-			var client = ClientFactory.CreateClient();
-			client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", "application/json");
-			var address = $"{_apiV1}move?toFolderId={toFolderId}&folderId={fromFolderId}&fileId={fileId}";
-			var responseJson = RunSyncUtil.RunSync(() =>
-				client.GetStringAsync(string.IsNullOrEmpty(storageName) ? address : $"{address}&name={storageName}"));
-
-		}
-
-		#endregion
+			=> _service.Move(externalFolderId, toExternalFolderId, externalFileId, storageName);
 	}
 }

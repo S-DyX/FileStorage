@@ -75,14 +75,23 @@ namespace FileStorage.Contracts.Rest.Impl
         /// <returns></returns>
         bool IsExists(string externalFolderId, string externalFileId, string storageName);
 
-        ///// <summary>
-        ///// Return exist id in FS by externalId
-        ///// </summary>
-        ///// <param name="externalFolderId">this is folder id from your system</param>
-        ///// <param name="externalFileId">this is file id from your system</param> 
-        ///// <param name="storageName"></param>
-        ///// <returns></returns>
-        //string GetExistIdByExternal(string externalFolderId, string externalFileId, string storageName);
+        /// <summary>
+        /// Return exist id in FS by externalId (null or empty, if the file does not exist)
+        /// </summary>
+        /// <param name="externalFolderId">this is folder id from your system</param>
+        /// <param name="externalFileId">this is file id from your system</param> 
+        /// <param name="storageName"></param>
+        /// <returns></returns>
+        string GetExistIdByExternal(string externalFolderId, string externalFileId, string storageName);
+
+        /// <summary>
+        /// Is exists on FS (the server computes internal ids from your ids)
+        /// </summary>
+        /// <param name="externalFolderId">this is folder id from your system</param>
+        /// <param name="externalFileId">this is file id from your system</param> 
+        /// <param name="storageName"></param>
+        /// <returns></returns>
+        bool IsExistsByExternalId(string externalFolderId, string externalFileId, string storageName);
 
 
         /// <summary>

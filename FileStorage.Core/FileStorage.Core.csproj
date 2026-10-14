@@ -19,7 +19,7 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <DocumentationFile>c:\Work\.NetCore\FileStorage\FileStorage.Core\FileStorage.Core.xml</DocumentationFile>
+    <DocumentationFile>$(MSBuildProjectDirectory)\FileStorage.Core.xml</DocumentationFile>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <WarningLevel>0</WarningLevel>
   </PropertyGroup>
@@ -27,6 +27,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="6.0.3" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.7" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.7" />
   </ItemGroup>
 
 </Project>

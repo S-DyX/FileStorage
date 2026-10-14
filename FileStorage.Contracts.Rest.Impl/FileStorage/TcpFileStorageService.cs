@@ -20,7 +20,8 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <param name="settings"><see cref="RestClientResponseSettings"/></param>
 		public TcpFileStorageService(TcpClientResponseSettings settings) : base(settings)
 		{
-			_client = new CommandTcpSocketClient(settings.Port ?? 11881);
+			// порт по умолчанию — как у сервера (Connection:Tcp:Port = 11581); раньше было 11881
+			_client = new CommandTcpSocketClient(settings.Port ?? 11581);
 			_client.Connect(settings.Address);
 		}
 
@@ -54,36 +55,38 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 
 		public void SaveBytes(string fileId, byte[] bytes, string storageName, string sessionId)
 		{
-			Write(fileId, storageName, bytes, sessionId);
+			// fileId — внутренний id; раньше он хешировался ещё раз, и файл сохранялся под другим id
+			Write(fileId, storageName, bytes, true, sessionId);
 		}
 
 		public void SaveBytes(string fileId, string storageName, Stream stream, string sessionId)
 		{
-			Write(fileId, storageName, stream, sessionId);
+			// fileId — внутренний id, без повторного хеширования
+			stream.WriteChunks(64 * 1024, (chunk, close) => Write(fileId, storageName, chunk, close, sessionId));
 		}
 
 		public void WriteToStream(string fileId, string storageName, Stream stream)
 		{
-			const int constSize = 100000;
 			long offset = 0;
-			long size = constSize;
 			var totalLen = GetSize(fileId, storageName);
-			if (totalLen == 0)
-				return;
-			byte[] bytes;
-			do
+			while (offset < totalLen)
 			{
-				if (offset + size > totalLen)
-				{
-					size = totalLen - offset;
-				}
-
-				bytes = Read(fileId, offset, size, storageName);
-				if (bytes == null)
+				var size = Math.Min(TcpResponse.ReadChunkSize, totalLen - offset);
+				var read = SendRead(fileId, offset, size, storageName);
+				if (read?.Content == null)
 					return;
-				stream.Write(bytes, 0, bytes.Length);
-				offset += bytes.Length;
-			} while (offset < totalLen);
+				if (!read.IsPartial)
+				{
+					// старый сервер возвращает файл целиком — дописываем остаток и заканчиваем
+					if (offset < read.Content.Length)
+						stream.Write(read.Content, (int)offset, read.Content.Length - (int)offset);
+					return;
+				}
+				if (read.Content.Length == 0)
+					return;
+				stream.Write(read.Content, 0, read.Content.Length);
+				offset += read.Content.Length;
+			}
 		}
 
 
@@ -110,7 +113,6 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <param name="sessionId"></param>
 		private void Write(string fileId, string storageName, byte[] bytes, bool close, string sessionId)
 		{
-
 			var tcpCommonMessage = new TcpCommonMessage()
 			{
 				RequestId = Guid.NewGuid().ToString(),
@@ -122,11 +124,11 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 					Content = bytes,
 					IsClose = close,
 					SessionId = sessionId
-
 				}
 			};
 			var data = _client.SendReceive(tcpCommonMessage);
-
+			// раньше ответ не проверялся, и ошибка записи терялась
+			TcpResponse.EnsureOk(data, "write");
 		}
 
 
@@ -222,23 +224,9 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <returns></returns>
 		public bool IsExistsByExternalId(string externalFileId, string storageName)
 		{
-			var fileId = externalFileId.GetSha1Hash();
-			var tcpCommonMessage = new TcpCommonMessage()
-			{
-				RequestId = Guid.NewGuid().ToString(),
-				Type = TcpMessageType.IsExistsByExternalId,
-				ReadCommand = new ReadMessage()
-				{
-					FileId = fileId,
-					StorageName = storageName
-				}
-			};
-			var data = _client.SendReceive(tcpCommonMessage);
-			if (data != null)
-			{
-				return data.ReadCommand.IsExists;
-			}
-			return false;
+			// Сервер сам хеширует внешний id и возвращает в ответе FileId, а не IsExists.
+			// Раньше id хешировался дважды, а результат читался из IsExists, поэтому всегда был false.
+			return !string.IsNullOrEmpty(GetExistIdByExternal(externalFileId, storageName));
 		}
 		/// <summary>
 		/// Partial read 
@@ -250,7 +238,32 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <returns></returns>
 		public byte[] GetBytes(string fileId, long offset, long size, string storageName)
 		{
-			throw new NotImplementedException();
+			// раньше метод не был реализован (NotImplementedException)
+			if (size <= 0)
+				return null;
+			var read = SendRead(fileId, offset, size, storageName);
+			return TcpResponse.GetRange(read, offset, size);
+		}
+
+		/// <summary>
+		/// Команда Read по внутреннему id: просит у сервера только часть файла (Offset/Length)
+		/// </summary>
+		private ReadMessage SendRead(string fileId, long offset, long size, string storageName)
+		{
+			var tcpCommonMessage = new TcpCommonMessage()
+			{
+				RequestId = Guid.NewGuid().ToString(),
+				Type = TcpMessageType.Read,
+				ReadCommand = new ReadMessage()
+				{
+					FileId = fileId,
+					StorageName = storageName,
+					Offset = offset,
+					Length = size
+				}
+			};
+			var data = _client.SendReceive(tcpCommonMessage);
+			return TcpResponse.IsOk(data) ? data.ReadCommand : null;
 		}
 		/// <summary>
 		/// Save stream to FS
@@ -277,29 +290,9 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <returns></returns>
 		public byte[] Read(string externalFileId, long offset, long size, string storageName)
 		{
-			if (size == 0)
-				return null;
-
-			var fileId = externalFileId.GetSha1Hash();
-			var tcpCommonMessage = new TcpCommonMessage()
-			{
-				RequestId = Guid.NewGuid().ToString(),
-				Type = TcpMessageType.Read,
-				ReadCommand = new ReadMessage()
-				{
-					FileId = fileId,
-					StorageName = storageName
-				}
-			};
-			var data = _client.SendReceive(tcpCommonMessage);
-			if (data != null)
-			{
-				return data.ReadCommand.Content;
-			}
-			return null;
-
-
-
+			// Раньше смещение и размер не передавались серверу: каждый вызов возвращал файл целиком,
+			// и поток из GetStream собирал из этих ответов повреждённые данные.
+			return GetBytes(externalFileId.GetSha1Hash(), offset, size, storageName);
 		}/// <summary>
 		/// Delete file from FS
 		/// </summary>
@@ -319,11 +312,16 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 				}
 			};
 			var data = _client.SendReceive(tcpCommonMessage);
-			if (data != null)
-			{
-				return true;
-			}
-			return false;
+			// раньше любой ответ, в том числе с ошибкой, считался успешным удалением
+			return TcpResponse.IsOk(data);
+		}
+
+		/// <summary>
+		/// <see cref="IFileStorageRestService.DeleteByExternalId(string, string)"/>
+		/// </summary>
+		public bool DeleteByExternalId(string externalFileId, string storageName)
+		{
+			return IsExists(externalFileId, storageName) && Delete(externalFileId.GetSha1Hash(), storageName);
 		} 
 
 		/// <summary>
