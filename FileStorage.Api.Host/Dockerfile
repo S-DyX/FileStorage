@@ -34,4 +34,7 @@ RUN dotnet publish "FileStorage.Api.Host.csproj" -c $BUILD_CONFIGURATION -o /app
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+# логирование для сервера: Info в файлы с ротацией (10 МБ, 50 файлов), в консоль (docker logs) — предупреждения
+# и ошибки; nlog.config проекта (уровень Trace) — для отладки
+COPY --from=build /src/Install/config/nlog.config ./nlog.config
 ENTRYPOINT ["dotnet", "FileStorage.Api.Host.dll"]

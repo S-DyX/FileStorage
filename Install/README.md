@@ -51,7 +51,7 @@ TCP-сервер команд — порт `11581`.
 | `/etc/bsa-filestorage/filestorage.json` | хранилище: `RootDirectory` = `/var/bsa/filestorage`, глубина дерева, адрес и порт TCP (`Connection:Tcp`, по умолчанию `0.0.0.0:11581`) |
 | `/etc/bsa-filestorage/nlog.config` | логирование (серверный вариант из `Install/config/nlog.config`) |
 | `/var/bsa/filestorage` | файлы хранилищ (домашняя папка пользователя `bsafilestorage`) |
-| `/var/log/bsa/FileStorage.Api.Host` | логи NLog |
+| `/var/log/bsa/FileStorage.Api.Host` | логи NLog: `Info.log`, `Errors.log` и их архивы (по кругу, 10 МБ × 50 файлов) |
 
 Файлы в `/etc/bsa-filestorage` — conffiles: при обновлении пакета dpkg сохраняет локальные изменения
 (и спрашивает, если в новой версии файл тоже изменился). После правки конфигурации:
@@ -74,12 +74,13 @@ TCP-сервер команд — порт `11581`.
   `"Address": "127.0.0.1"` в `filestorage.json`.
 - `TreeDepth` и `ElementsCount` задают раскладку файлов на диске: меняйте их только для нового, пустого хранилища.
   Для существующего — через `changeDepth` API (глубина сохраняется в `depth.config` в каталоге хранилища).
-- Логирование в пакете — `Install/config/nlog.config`, а не `nlog.config` проекта (там уровень Trace для отладки):
-  в файлы `<дата>-Info.log` пишется Info и выше (в том числе строка на каждый HTTP-запрос), в `<дата>-Errors.log` —
-  ошибки; в журнал systemd — только предупреждения, ошибки и запуск/остановка. Служебные сообщения ASP.NET Core
+- Логирование в пакете (и в Docker-образе) — `Install/config/nlog.config`, а не `nlog.config` проекта (там уровень Trace
+  для отладки): в `Info.log` пишется Info и выше (в том числе строка на каждый HTTP-запрос), в `Errors.log` — ошибки;
+  в журнал systemd — только предупреждения, ошибки и запуск/остановка. Служебные сообщения ASP.NET Core
   ниже Warning отбрасываются. Для отладки поднимите подробность в `/etc/bsa-filestorage/nlog.config`
   (`minlevel="Trace"`): NLog перечитывает файл сам, перезапуск не нужен.
-- Старые файлы логов не удаляются: при необходимости настройте очистку (logrotate или cron).
+- Логи пишутся по кругу: файл до 10 МБ, затем он уходит в архив `Info.00.log` (самый новый) … `Info.48.log`;
+  на каждый лог не больше 50 файлов, то есть не больше 500 МБ. Чистить их вручную не нужно.
 - Зависимость пакета — `aspnetcore-runtime-<версия>` по `<TargetFramework>` проекта (для `net9.0` — `aspnetcore-runtime-9.0`).
   Он есть в Ubuntu 24.04+ (backports) и в репозитории Microsoft (`packages.microsoft.com`). Для систем без него —
   сборка с `SELF_CONTAINED=true` (рантайм внутри пакета).
