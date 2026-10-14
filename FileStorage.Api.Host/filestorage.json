@@ -1,8 +1,7 @@
 {
   "RootDirectory": "/var/bsa/filestorage",
-  "IsMainNode": false,
   "NumberOfShards": 1,
-  "ElemenetsCount": 6,
+  "ElementsCount": 6,
   "TreeDepth": 3,
   "Connection": {
     "Tcp": {

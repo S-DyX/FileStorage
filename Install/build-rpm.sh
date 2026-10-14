@@ -76,13 +76,8 @@ rm -f "$STAGE$APP_DIR"/appsettings.Development.json "$STAGE$APP_DIR"/*.pdb
 # from its own folder (AppDomain.BaseDirectory), so the files there are symlinks to /etc
 cp "$SCRIPT_DIR/config/appsettings.json" "$STAGE$ETC_DIR/appsettings.json"
 cp "$SCRIPT_DIR/config/filestorage.json" "$STAGE$ETC_DIR/filestorage.json"
-for file in nlog.config; do
-	if [ -f "$PUBLISH_DIR/$file" ]; then
-		cp "$PUBLISH_DIR/$file" "$STAGE$ETC_DIR/$file"
-	elif [ -f "$PROJECT_DIR/$file" ]; then
-		cp "$PROJECT_DIR/$file" "$STAGE$ETC_DIR/$file"
-	fi
-done
+# logging for a server (Info to files, warnings to the systemd journal); the project's nlog.config is for debugging
+cp "$SCRIPT_DIR/config/nlog.config" "$STAGE$ETC_DIR/nlog.config"
 for path in "$STAGE$ETC_DIR"/*; do
 	file="$(basename "$path")"
 	rm -f "$STAGE$APP_DIR/$file"
