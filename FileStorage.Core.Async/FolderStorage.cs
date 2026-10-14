@@ -242,10 +242,7 @@ namespace FileStorage.Core
 
 		public void Drop()
 		{
-			_fileStorageVirtual.Drop();
-			Directory.Delete(_rootDirectory, true);
-			_log.Clear();
-			_log = new FileStorageLog(_rootDirectory);
+			ResetStorage();
 		}
 
 		private static string GetTempFileName(string fileName, string sessionId = "")
@@ -716,31 +713,24 @@ namespace FileStorage.Core
 		/// <param name="toId"></param>
 		public void Move(FolderStorageInfo fromId, FolderStorageInfo toId)
 		{
-			if (Exists(fromId))
-			{
-				var fileNameTo = GetFullFileName(toId, true);
-				var fileNameFrom = GetFullFileName(fromId);
-				var fileInfo = new FileInfo(fileNameTo);
-				var fileInfoFrom = new FileInfo(fileNameTo);
+			if (!Exists(fromId))
+				return;
 
+			var fileNameFrom = GetFullFileName(fromId);
+			var fileNameTo = GetFullFileName(toId, true);
+			if (string.Equals(fileNameFrom, fileNameTo, PathComparison))
+				return;
 
-				if (!_fileStorageVirtual.Exists(fileNameTo))
-				{
+			// размер берём до переноса: после него исходного файла уже нет
+			var length = new FileInfo(fileNameFrom).Length;
+			// File.Move перезаписывает существующий файл, удалять его отдельно не нужно
+			_fileStorageVirtual.Move(fileNameFrom, fileNameTo);
 
-					_fileStorageVirtual.Move(fileNameFrom, fileNameTo);
-				}
-				else
-				{
-					_fileStorageVirtual.Delete(fileNameTo);
-					_fileStorageVirtual.Move(fileNameFrom, fileNameTo);
-				}
-				_fileStorageVirtual.Delete(fileNameFrom);
-
-
-				_log.Write(EventType.FileSave, fileInfo.Name, fileInfo.Length, toId.FolderId);
-				_log.Write(EventType.FileMoveDelete, fileInfoFrom.Name, fileInfoFrom.Length, fromId.FolderId);
-			}
-
+			// Журнал в памяти хранит по каждому id только последнее событие. При переносе между папками
+			// имя файла обычно не меняется, поэтому удаление из старой папки пишем первым:
+			// итоговым состоянием должно быть «файл есть в новой папке».
+			_log.Write(EventType.FileMoveDelete, fromId.FileId, length, fromId.FolderId);
+			_log.Write(EventType.FileSave, toId.FileId, length, toId.FolderId);
 		}
 		/// <summary>
 		/// <see cref="IFolderStorage.GetSize(FolderStorageInfo)"/>
@@ -811,7 +801,25 @@ namespace FileStorage.Core
 		/// </summary>
 		public void DeleteAll()
 		{
-			Directory.Delete(_rootDirectory);
+			ResetStorage();
+		}
+
+		/// <summary>
+		/// Полностью очищает хранилище: убирает его файлы из кеша, останавливает журнал,
+		/// удаляет каталог вместе с содержимым и создаёт пустой журнал.
+		/// </summary>
+		private void ResetStorage()
+		{
+			// кеш общий для всех хранилищ фабрики, поэтому убираем из него только файлы этого хранилища
+			_fileStorageVirtual.ReleaseDirectory(_rootDirectory);
+			// новые события не сохраняем, а таймеры старого журнала останавливаем
+			_log.Clear();
+			_log.Dispose();
+			if (Directory.Exists(_rootDirectory))
+			{
+				Directory.Delete(_rootDirectory, true);
+			}
+			_log = new FileStorageLog(_rootDirectory);
 		}
 
 		/// <summary>

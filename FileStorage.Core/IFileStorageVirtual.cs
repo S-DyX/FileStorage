@@ -81,6 +81,12 @@ namespace FileStorage.Core
 		/// </summary>
 		void Drop();
 
+		/// <summary>
+		/// Убрать из кеша все файлы и каталоги, путь которых начинается с directory (файлы на диске не трогаются)
+		/// </summary>
+		/// <param name="directory"></param>
+		void ReleaseDirectory(string directory);
+
 	}
 
 	/// <summary>
@@ -262,8 +268,8 @@ namespace FileStorage.Core
 						Directory.Delete(directory);
 					}
 
-					if (_dictFiles.IsExists(directory))
-						_dictFiles.Delete(directory);
+					// каталог хранится в кеше каталогов, а не файлов
+					_dictDirectories.Delete(directory);
 				}
 			}
 		}
@@ -293,6 +299,29 @@ namespace FileStorage.Core
 				_fileSet.Clear();
 				_dictFiles.Clear();
 			}
+		}
+
+		/// <summary>
+		/// <see cref="IFileStorageVirtual.ReleaseDirectory(string)"/>
+		/// </summary>
+		/// <param name="directory"></param>
+		public void ReleaseDirectory(string directory)
+		{
+			lock (_sync)
+			{
+				// один проход по списку вместо Remove для каждого файла (это было бы O(n²))
+				var released = _files.Where(f => f.StartsWith(directory, StringComparison.Ordinal)).ToList();
+				if (released.Count == 0)
+					return;
+				_files.RemoveAll(f => f.StartsWith(directory, StringComparison.Ordinal));
+				foreach (var file in released)
+				{
+					_fileSet.Remove(file);
+					_dictFiles.Delete(file);
+				}
+			}
+			// записи кеша каталогов (MemoryCache) перебрать нельзя; лишняя запись о каталоге безвредна:
+			// AddDirectory всё равно проверяет наличие каталога на диске
 		}
 
 		private void GetSubDirectoryCount(string[] directories)

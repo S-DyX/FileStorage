@@ -20,7 +20,7 @@ namespace FileStorage.Core.Interfaces
 
 
 
-	public interface IFileStorageLog
+	public interface IFileStorageLog : IDisposable
 	{
 		List<EventMessage> GetAll();
 		void Rewrite(List<EventMessage> eventMessages, DateTime time);
@@ -94,31 +94,52 @@ namespace FileStorage.Core.Interfaces
 		private void Reinit()
 		{
 			var rootLogDir = GetRootLogDir();
-			if (Directory.Exists(rootLogDir))
-			{
-				var files = Directory.GetFiles(rootLogDir, "*.log", SearchOption.AllDirectories);
-				var regex = new Regex("(?<y>\\d{4})(?<m>\\d{2})\\.log");
-				foreach (var file in files)
-				{
-					var fileInfo = new FileInfo(file);
-					var match = regex.Match(fileInfo.Name);
-					if (match.Success)
-					{
-						var month = match.Groups["m"].Value;
-						var year = match.Groups["y"].Value;
-						var date = new DateTime(int.Parse(year), int.Parse(month), 1, 0, 0, 0, 0, DateTimeKind.Utc);
-						var eventMessages = new List<EventMessage>();
-						AddFile(file, date, eventMessages);
-						_scope.AddRange(eventMessages);
-					}
-				}
-			}
-			else
+			if (!Directory.Exists(rootLogDir))
 			{
 				Directory.CreateDirectory(rootLogDir);
+				return;
+			}
+			foreach (var logFile in GetLogFiles())
+			{
+				var eventMessages = new List<EventMessage>();
+				AddFile(logFile.Value, logFile.Key, eventMessages);
+				_scope.AddRange(eventMessages);
 			}
 		}
 
+		/// <summary>
+		/// Файлы журнала (Log/yyyyMM/yyyyMM.log) с месяцем, к которому они относятся, по возрастанию месяца
+		/// </summary>
+		private List<KeyValuePair<DateTime, string>> GetLogFiles()
+		{
+			var result = new List<KeyValuePair<DateTime, string>>();
+			var rootLogDir = GetRootLogDir();
+			if (!Directory.Exists(rootLogDir))
+				return result;
+
+			var regex = new Regex("(?<y>\\d{4})(?<m>\\d{2})\\.log");
+			foreach (var file in Directory.GetFiles(rootLogDir, "*.log", SearchOption.AllDirectories))
+			{
+				var match = regex.Match(Path.GetFileName(file));
+				if (!match.Success)
+					continue;
+				var year = int.Parse(match.Groups["y"].Value);
+				var month = int.Parse(match.Groups["m"].Value);
+				var date = new DateTime(year, month, 1, 0, 0, 0, 0, DateTimeKind.Utc);
+				result.Add(new KeyValuePair<DateTime, string>(date, file));
+			}
+			return result.OrderBy(x => x.Key).ToList();
+		}
+
+		/// <summary>
+		/// Останавливает таймеры и сохраняет ещё не записанные события
+		/// </summary>
+		public void Dispose()
+		{
+			_repeater.Dispose();
+			_repeaterFileCheck.Dispose();
+			Flush();
+		}
 
 		public void Write(EventType type, string fileId, long size, string folderId)
 		{
@@ -235,20 +256,18 @@ namespace FileStorage.Core.Interfaces
 		private List<EventMessage> LoadFromFile(DateTime time)
 		{
 			var list = new List<EventMessage>();
-
-			var dateTime = time.Date;
-			var fileName = GetFileName(dateTime);
-
-			while (dateTime.Date <= DateTime.UtcNow)
+			// Журналы помесячные: загружаем все файлы начиная с месяца time включительно.
+			// Раньше перебор шёл по дням начиная с time + 1 день: журнал месяца time мог пропуститься,
+			// а для DateTime.MinValue выходило около 740 тыс. итераций.
+			var fromMonth = new DateTime(time.Year, time.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+			foreach (var logFile in GetLogFiles())
 			{
-				dateTime = dateTime.AddDays(1);
-				fileName = GetFileName(dateTime);
-				AddFile(fileName, dateTime, list);
+				if (logFile.Key >= fromMonth)
+				{
+					AddFile(logFile.Value, logFile.Key, list);
+				}
 			}
 			_scope.SetMinMax(time);
-
-			//var fileInfo = new FileInfo(fileName);
-
 			return list;
 		}
 

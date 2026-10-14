@@ -42,6 +42,9 @@ namespace FileStorage.Contracts
 		private readonly string _externalId;
 		private readonly string _storageName;
 		private string _id;
+		// id, под которым файл зарегистрирован в FileInProcess. _id может смениться после Write,
+		// а освобождать нужно именно зарегистрированный ключ.
+		private readonly string _registeredId;
 		private bool _isClosed;
 		private bool _isOpen;
 		private readonly string _sessionId;
@@ -53,8 +56,18 @@ namespace FileStorage.Contracts
 			_storageName = storageName;
 			_sessionId = Guid.NewGuid().ToString();
 			_id = _service.GetIdByExternal(externalId);
-			FileInProcess.Instance.Register(_id);
-			_service.DeleteTemp(_id);
+			_registeredId = _id;
+			FileInProcess.Instance.Register(_registeredId);
+			try
+			{
+				_service.DeleteTemp(_id);
+			}
+			catch
+			{
+				// объект не создан, Dispose не вызовут — иначе ключ остался бы занятым навсегда
+				FileInProcess.Instance.Release(_registeredId);
+				throw;
+			}
 
 		}
 		public void Dispose()
@@ -68,9 +81,16 @@ namespace FileStorage.Contracts
 		{
 			if (!_isClosed)
 			{
-				_service.DeleteTemp(_id);
-				FileInProcess.Instance.Release(_id);
 				_isClosed = true;
+				try
+				{
+					_service.DeleteTemp(_id);
+				}
+				finally
+				{
+					// ключ освобождаем, даже если удаление временного файла не удалось
+					FileInProcess.Instance.Release(_registeredId);
+				}
 			}
 		}
 
@@ -136,6 +156,9 @@ namespace FileStorage.Contracts
 		private readonly IWcfFileStorageService _service;
 
 		private string _id;
+		// id, под которым файл зарегистрирован в FileInProcess. _id может смениться после Write,
+		// а освобождать нужно именно зарегистрированный ключ.
+		private readonly string _registeredId;
 		private bool _isClosed;
 		private bool _isOpen;
 		private readonly string _sessionId;
@@ -143,9 +166,19 @@ namespace FileStorage.Contracts
 		public FileStorageBatchPersistById(IWcfFileStorageService service, string id)
 		{
 			FileInProcess.Instance.Register(id);
+			_registeredId = id;
 			_service = service;
 			_id = id;
-			_service.DeleteTemp(_id);
+			try
+			{
+				_service.DeleteTemp(_id);
+			}
+			catch
+			{
+				// объект не создан, Dispose не вызовут — иначе ключ остался бы занятым навсегда
+				FileInProcess.Instance.Release(_registeredId);
+				throw;
+			}
 			_sessionId = Guid.NewGuid().ToString();
 		}
 
@@ -160,9 +193,16 @@ namespace FileStorage.Contracts
 		{
 			if (!_isClosed)
 			{
-				_service.DeleteTemp(_id);
-				FileInProcess.Instance.Release(_id);
 				_isClosed = true;
+				try
+				{
+					_service.DeleteTemp(_id);
+				}
+				finally
+				{
+					// ключ освобождаем, даже если удаление временного файла не удалось
+					FileInProcess.Instance.Release(_registeredId);
+				}
 			}
 		}
 

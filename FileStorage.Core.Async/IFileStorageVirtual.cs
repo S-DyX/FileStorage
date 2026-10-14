@@ -80,6 +80,12 @@ namespace FileStorage.Core
 		/// </summary>
 		void Drop();
 
+		/// <summary>
+		/// Убрать из кеша все файлы и каталоги, путь которых начинается с directory (файлы на диске не трогаются)
+		/// </summary>
+		/// <param name="directory"></param>
+		void ReleaseDirectory(string directory);
+
 	}
 
 	/// <summary>
@@ -262,8 +268,8 @@ namespace FileStorage.Core
 						Directory.Delete(directory);
 					}
 
-					if (_dictFiles.ContainsKey(directory))
-						_dictFiles.Remove(directory);
+					// каталог хранится в словаре каталогов, а не файлов
+					_dictDirectories.Remove(directory);
 				}
 			}
 		}
@@ -300,6 +306,32 @@ namespace FileStorage.Core
 			{
 				_files.Clear();
 				_dictFiles.Clear();
+			}
+		}
+
+		/// <summary>
+		/// <see cref="IFileStorageVirtual.ReleaseDirectory(string)"/>
+		/// </summary>
+		/// <param name="directory"></param>
+		public void ReleaseDirectory(string directory)
+		{
+			lock (_sync)
+			{
+				// один проход по списку вместо Remove для каждого файла (это было бы O(n²))
+				var released = _files.Where(f => f.StartsWith(directory, StringComparison.Ordinal)).ToList();
+				_files.RemoveAll(f => f.StartsWith(directory, StringComparison.Ordinal));
+				foreach (var file in released)
+				{
+					_dictFiles.Remove(file);
+				}
+			}
+			lock (_syncDirectory)
+			{
+				var directories = _dictDirectories.Keys.Where(d => d.StartsWith(directory, StringComparison.Ordinal)).ToList();
+				foreach (var dir in directories)
+				{
+					_dictDirectories.Remove(dir);
+				}
 			}
 		}
 

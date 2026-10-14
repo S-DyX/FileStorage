@@ -61,8 +61,14 @@ namespace FileStorage.Core.Helpers
 		{
 			if (bytes.IsNullOrEmpty())
 				return null;
-			var chars = new char[bytes.Length / sizeof(char)];
-			Buffer.BlockCopy(bytes, 0, chars, 0, bytes.Length);
+			// Символ занимает 2 байта. При нечётной длине последний неполный байт заменяем символом U+FFFD,
+			// как это делает Encoding.Unicode; раньше Buffer.BlockCopy падал с ArgumentException.
+			var charCount = bytes.Length / sizeof(char);
+			var hasTail = bytes.Length % sizeof(char) != 0;
+			var chars = new char[charCount + (hasTail ? 1 : 0)];
+			Buffer.BlockCopy(bytes, 0, chars, 0, charCount * sizeof(char));
+			if (hasTail)
+				chars[charCount] = '\uFFFD';
 			return new string(chars);
 		}
 	}
