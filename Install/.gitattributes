@@ -1,0 +1,2 @@
+# shell scripts and package metadata must keep LF line endings (dpkg and bash reject CRLF)
+* text eol=lf

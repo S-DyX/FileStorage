@@ -1,0 +1,39 @@
+#!/bin/sh
+set -e
+
+DATA_DIR=/var/bsa/filestorage
+LOG_DIR=/var/log/bsa/FileStorage.Api.Host
+SERVICE_USER=bsafilestorage
+SERVICE=bsa-filestorage.service
+
+case "$1" in
+	configure)
+		if ! getent group "$SERVICE_USER" >/dev/null; then
+			addgroup --system "$SERVICE_USER"
+		fi
+		if ! getent passwd "$SERVICE_USER" >/dev/null; then
+			adduser --system --ingroup "$SERVICE_USER" --home "$DATA_DIR" --no-create-home \
+				--shell /usr/sbin/nologin --gecos "BSA FileStorage service" "$SERVICE_USER"
+		fi
+
+		# files: RootDirectory in /etc/bsa-filestorage/filestorage.json; logs: /etc/bsa-filestorage/nlog.config.
+		# /var/bsa and /var/log/bsa may be shared with other BSA services: only our own folders change owner.
+		mkdir -p "$DATA_DIR" "$LOG_DIR"
+		chown "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR" "$LOG_DIR"
+		chmod 0750 "$DATA_DIR"
+		# the application does not write next to its binaries: /opt/bsa-filestorage stays owned by root
+		chown root:"$SERVICE_USER" /etc/bsa-filestorage /etc/bsa-filestorage/*
+		chmod 0750 /etc/bsa-filestorage
+		chmod 0640 /etc/bsa-filestorage/*
+
+		if [ -d /run/systemd/system ]; then
+			systemctl daemon-reload
+			systemctl enable "$SERVICE" >/dev/null
+			systemctl restart "$SERVICE" || echo "bsa-filestorage: service did not start, see: journalctl -u $SERVICE"
+		fi
+		;;
+	abort-upgrade|abort-remove|abort-deconfigure)
+		;;
+esac
+
+exit 0

@@ -1,0 +1,26 @@
+[Unit]
+Description=BSA FileStorage API (hierarchical file storage)
+Documentation=http://bsasearch.ru/filestorage.html
+After=network.target
+
+[Service]
+Type=simple
+User=bsafilestorage
+Group=bsafilestorage
+# the host reads appsettings.json and filestorage.json from the working directory
+WorkingDirectory=/opt/bsa-filestorage
+ExecStart=@EXEC_START@
+Restart=on-failure
+RestartSec=10
+# graceful stop: the host flushes the change log of the storages before exit
+KillSignal=SIGTERM
+TimeoutStopSec=60
+# every request to a file opens it; many parallel uploads and downloads keep many files open
+LimitNOFILE=65536
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+Environment=DOTNET_NOLOGO=1
+SyslogIdentifier=bsa-filestorage
+
+[Install]
+WantedBy=multi-user.target

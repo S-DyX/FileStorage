@@ -1,0 +1,28 @@
+#!/bin/sh
+set -e
+
+SERVICE_USER=bsafilestorage
+
+case "$1" in
+	remove)
+		if [ -d /run/systemd/system ]; then
+			systemctl daemon-reload || true
+		fi
+		;;
+	purge)
+		rm -rf /var/log/bsa/FileStorage.Api.Host
+		rmdir /var/log/bsa 2>/dev/null || true
+		if getent passwd "$SERVICE_USER" >/dev/null; then
+			deluser --system "$SERVICE_USER" >/dev/null 2>&1 || true
+		fi
+		if [ -d /run/systemd/system ]; then
+			systemctl daemon-reload || true
+		fi
+		# stored files are never deleted automatically
+		if [ -d /var/bsa/filestorage ]; then
+			echo "bsa-filestorage: stored files are kept in /var/bsa/filestorage (delete them manually if not needed)"
+		fi
+		;;
+esac
+
+exit 0

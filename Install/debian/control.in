@@ -1,0 +1,14 @@
+Package: bsa-filestorage
+Version: @VERSION@
+Section: web
+Priority: optional
+Architecture: @ARCH@
+Maintainer: Stanislav Batyrgareev <sbatyrgareev@gmail.com>
+Installed-Size: @SIZE@
+Depends: adduser, @DEPENDS@
+Homepage: http://bsasearch.ru/filestorage.html
+Description: BSA FileStorage API host - hierarchical file storage service
+ HTTP API (ASP.NET Core) and TCP command server over the FileStorage.Core
+ hierarchical file storage: files and folders, chunked upload, partial reads,
+ change log for synchronization and TTL cleanup.
+ Runs as the systemd service bsa-filestorage.
