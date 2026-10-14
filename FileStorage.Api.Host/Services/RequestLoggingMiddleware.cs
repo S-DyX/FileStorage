@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -11,6 +12,9 @@ namespace FileStorage.Api.Host.Services
 {
 	public class RequestLoggingMiddleware
 	{
+		// тело запроса попадает в лог, только если оно не больше этого размера
+		private const int MaxLoggedBodySize = 1024 * 5;
+
 		private readonly RequestDelegate _next;
 		private readonly ILogger _logger;
 
@@ -22,53 +26,49 @@ namespace FileStorage.Api.Host.Services
 
 		public async Task Invoke(HttpContext context)
 		{
-			context.Request.EnableBuffering();
+			var request = context.Request;
+			// Буферизуем только небольшие запросы с известной длиной — только их тело и попадает в лог.
+			// Раньше буферизовалось тело каждого запроса, включая загрузку файлов: лишняя копия
+			// каждого загружаемого файла в памяти или во временном файле.
+			if (request.ContentLength.HasValue && request.ContentLength.Value <= MaxLoggedBodySize)
+			{
+				request.EnableBuffering();
+			}
 
-			// Leave the body open so the next middleware can read it.
-
+			var stopwatch = Stopwatch.StartNew();
 			try
 			{
-
 				await _next(context);
 			}
 			catch (Exception ex)
 			{
-				var content = GetDetails(context.Request);
+				var content = await GetDetailsAsync(request);
 				_logger.LogError(ex,
-					$"Request {context.Request?.Method} {context.Request?.Path.Value} => {context.Response?.StatusCode}, Request:{content}");
+					$"Request {request.Method} {request.Path.Value} => {context.Response?.StatusCode}, Request:{content}");
 				throw;
 			}
-			finally
+
+			// На каждый запрос — короткая строка; заголовки и тело — только при уровне Debug.
+			// Раньше они собирались и писались в лог на уровне Information для каждого запроса.
+			_logger.LogInformation($"Request {request.Method} {request.Path.Value} => {context.Response?.StatusCode} ({stopwatch.ElapsedMilliseconds} ms)");
+			if (_logger.IsEnabled(LogLevel.Debug))
 			{
-				var content = GetDetails(context.Request);
-
-				if (content.Length > 10000)
-				{
-					_logger.LogInformation(
-						$"Request {context.Request?.Method} {context.Request?.Path.Value} => {context.Response?.StatusCode}, Request:{content}");
-				}
-				else
-				{
-					_logger.LogInformation(content);
-
-
-				}
+				_logger.LogDebug(await GetDetailsAsync(request));
 			}
 		}
-		public static string GetDetails(HttpRequest request)
+
+		public static async Task<string> GetDetailsAsync(HttpRequest request)
 		{
 			string baseUrl = $"{request.Scheme}://{request.Host}{request.Path}{request.QueryString.Value}";
-			StringBuilder sbHeaders = new StringBuilder();
+			var sbHeaders = new StringBuilder();
 			foreach (var header in request.Headers)
 				sbHeaders.Append($"{header.Key}: {header.Value}\n");
 
 			string body = "no-body";
-			if (request.Body.Length > 1024 * 5)
+			// тело читаем, только если оно буферизовано и небольшое
+			if (request.Body.CanSeek && request.Body.Length <= MaxLoggedBodySize)
 			{
-
-			}
-			else
-			{
+				request.Body.Position = 0;
 				using (var reader = new StreamReader(
 					request.Body,
 					encoding: Encoding.UTF8,
@@ -76,16 +76,11 @@ namespace FileStorage.Api.Host.Services
 					bufferSize: 2222,
 					leaveOpen: true))
 				{
-					request.Body.Position = 0;
-					body = reader.ReadToEndAsync().Result;
-					// Do some processing with body…
-
-					// Reset the request body stream position so the next middleware can read it
-					request.Body.Position = 0;
+					body = await reader.ReadToEndAsync();
 				}
+				// возвращаем позицию, чтобы тело могли прочитать дальше
+				request.Body.Position = 0;
 			}
-
-
 
 			return $"{request.Protocol} {request.Method} {baseUrl}\n\n{sbHeaders}\n{body}";
 		}

@@ -7,6 +7,11 @@ namespace FileStorage.Contracts.Impl.Connections
     public interface IMessageProcessingService
     {
         ProcessingResponse Process(byte[] bytes, IWebSocketContainer from);
+
+        /// <summary>
+        /// Обрабатывает уже разобранные из кадров команды
+        /// </summary>
+        ProcessingResponse Process(IReadOnlyList<string> commands, IWebSocketContainer from);
     }
 
     public enum ResponseStatus

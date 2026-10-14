@@ -187,13 +187,12 @@ namespace FileStorage.Contracts.Impl
 				return null;
 
 			var res = fileStorage.Get(info);
-			if (res == null)
+			if (res?.Stream == null)
 				return null;
 			using (var stream = res.Stream)
 			{
-				var length = stream.Length;
-				var b = new byte[length];
-				stream.Read(b, 0, (int)length);
+				var b = new byte[stream.Length];
+				ReadFull(stream, b, b.Length);
 				return b;
 			}
 		}
@@ -206,30 +205,15 @@ namespace FileStorage.Contracts.Impl
 				var fileStorage = GetStorage(info.StorageName);
 				if (!fileStorage.Exists(info))
 					return null;
-				var key = $"{info.FolderId}_{info.FileId}_{offset}_{size}";
-				var data = _cache[key];
-				if (data != null)
-					return data;
 
+				// Страницы больше не кешируются и не читаются наперёд: раньше каждый промах читал 6 страниц
+				// и складывал их в MemoryCache без ограничения размера. Повторные чтения обслуживает кеш ОС.
 				var res = fileStorage.Get(info);
-				if (res == null)
+				if (res?.Stream == null)
 					return null;
 				using (var stream = res.Stream)
 				{
-					var b = GetBytes(offset, size, stream);
-					_cache[key] = b;
-					if (b.Length == size)
-					{
-						for (int i = 0; i < 5; i++)
-						{
-							offset += size;
-							var nextPage = GetBytes(offset, size, stream);
-							key = $"{info.FolderId}_{info.FileId}_{offset}_{size}";
-							_cache[key] = nextPage;
-						}
-					}
-
-					return b;
+					return GetBytes(offset, size, stream);
 				}
 			}
 			catch (Exception ex)
@@ -243,18 +227,30 @@ namespace FileStorage.Contracts.Impl
 		private static byte[] GetBytes(long offset, int size, Stream stream)
 		{
 			var length = stream.Length;
-			if (offset >= stream.Length)
+			if (offset >= length || size <= 0)
 				return new byte[0];
-			var l = size + offset;
-
-			if (l > length)
+			if (size + offset > length)
 			{
 				size = (int)(length - offset);
 			}
 			var b = new byte[size];
 			stream.Position = offset;
-			stream.Read(b, 0, size);
+			ReadFull(stream, b, size);
 			return b;
+		}
+
+		/// <summary>
+		/// Stream.Read может вернуть меньше запрошенного, даже если данные ещё есть, — читаем до конца
+		/// </summary>
+		private static int ReadFull(Stream stream, byte[] buffer, int count)
+		{
+			var total = 0;
+			int read;
+			while (total < count && (read = stream.Read(buffer, total, count - total)) > 0)
+			{
+				total += read;
+			}
+			return total;
 		}
 
 		/// <inheritdoc />
@@ -262,10 +258,8 @@ namespace FileStorage.Contracts.Impl
 		{
 			var fileStorage = CreateStorage(storageName);
 			var info = GetFolderStorageInfo(folderExternalId, fileExternalId, storageName);
-			using (var stream = new MemoryStream())
+			using (var stream = new MemoryStream(bytes, false))
 			{
-				stream.Write(bytes, 0, bytes.Length);
-				stream.Position = 0;
 				fileStorage.Save(stream, info);
 				return new FileInfoResponse(info.FileId, info.FileId, bytes.Length, fileStorage.GetRelativeFileName(info));
 			}

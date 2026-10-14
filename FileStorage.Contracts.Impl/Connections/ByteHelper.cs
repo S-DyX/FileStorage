@@ -78,40 +78,34 @@ namespace FileStorage.Contracts.Impl.Connections
 
 		public static bool IsReadToEndCommands(this List<byte> bytes)
 		{
-			var value = bytes.Take(50).ToArray();
-			if (value[0] == '@')
-			{
-				var size = BitConverter.ToInt32(value, 1);
-				if (bytes.Count > size)
-					return true;
-
-			}
-
-			return false;
-
+			// Кадр полный, когда получены все длина + 6 байт ('@' + Int32 + данные + '#').
+			// Раньше было достаточно больше «длины» байт, и неполный кадр считался полным.
+			if (bytes.Count < 5 || bytes[0] != '@')
+				return false;
+			var size = BitConverter.ToInt32(new[] { bytes[1], bytes[2], bytes[3], bytes[4] }, 0);
+			return size >= 0 && bytes.Count >= (long)size + 6;
 		}
 
 		public static string[] GetCommands(this byte[] bytes)
 		{
-
 			if (bytes == null)
 				return new string[0];
 
 			var result = new List<string>();
-			for (int i = 0; i < bytes.Length; i++)
+			for (int i = 0; i + 5 <= bytes.Length; i++)
 			{
 				if (bytes[i] == '@')
 				{
 					var size = BitConverter.ToInt32(bytes, i + 1);
 					var skip = i + 1 + 4;
-					var offset = i + size;
-					var end = skip + offset;
-					if (bytes.Length > end && bytes[end] == '#')
+					// раньше конец считался как skip + i + size — для всех кадров, кроме первого, неверно
+					var end = (long)skip + size;
+					if (size >= 0 && bytes.Length > end && bytes[end] == '#')
 					{
-						var array = bytes.Skip(skip).Take(size).ToArray();
-						var command = Encoding.UTF8.GetString(array);
+						// строка — прямо из массива, без Skip/Take/ToArray
+						var command = Encoding.UTF8.GetString(bytes, skip, size);
 						result.Add(command);
-						i = end;
+						i = (int)end;
 					}
 				}
 			}

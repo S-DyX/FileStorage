@@ -85,10 +85,30 @@ namespace FileStorage.Contracts.Impl.Connections
 		}
 		public bool Broadcast<T>(T message)
 		{
-			var json = JsonConvert.SerializeObject(message);
-			var bytes = Encoding.UTF8.GetBytes(json);
-			var clientClient = Client;
-			return Send(clientClient, bytes);
+			// JSON пишется сразу в кадр: без строки, её UTF-8 копии и копий в AddHeader.
+			// Раньше ответ с файлом занимал в памяти 6–8 размеров файла, теперь — около двух.
+			using (var frame = SocketExt.SerializeFrame(message, EstimateFrameSize(message)))
+			{
+				return SendFrame(Client, frame.GetBuffer(), (int)frame.Length);
+			}
+		}
+
+		private static int EstimateFrameSize<T>(T message)
+		{
+			// base64 увеличивает данные в 4/3 раза; запас — под остальные поля
+			var common = (object)message as TcpCommonMessage;
+			var content = common?.ReadCommand?.Content ?? common?.WriteCommand?.Content;
+			return content == null ? 512 : (int)Math.Min(int.MaxValue / 2, content.LongLength * 4 / 3 + 1024);
+		}
+
+		private static bool SendFrame(TcpClient client, byte[] frame, int length)
+		{
+			if (client == null || !client.Connected)
+				return false;
+			var broadcastStream = client.GetStream();
+			broadcastStream.Write(frame, 0, length);
+			broadcastStream.Flush();
+			return true;
 		}
 		public virtual bool Broadcast(byte[] bytes)
 		{
@@ -96,17 +116,10 @@ namespace FileStorage.Contracts.Impl.Connections
 		}
 		private static bool Send(TcpClient clientClient, byte[] message)
 		{
-			if (!clientClient.Connected || message == null)
+			if (message == null)
 				return false;
-			var broadcastStream = clientClient.GetStream();
-
-			message = message.AddHeader();
-
-
-
-			broadcastStream.Write(message, 0, message.Length);
-			broadcastStream.Flush();
-			return true;
+			var frame = message.AddHeader();
+			return SendFrame(clientClient, frame, frame.Length);
 		}
 		public int Decrement()
 		{
@@ -172,47 +185,54 @@ namespace FileStorage.Contracts.Impl.Connections
 
 		private void Process()
 		{
-			var buffer = new List<byte>(65525);
+			// Блокирующее чтение в переиспользуемый буфер. Раньше поток опрашивал сокет каждые 5 мс,
+			// на каждую порцию данных создавал новый массив, List<byte> и его копию, а команды разбирал дважды.
+			// Stop() закрывает соединение, и Read завершается исключением или нулём.
+			var readBuffer = new byte[64 * 1024];
+			var frameReader = new TcpFrameReader();
+			try
+			{
+				Client.ReceiveBufferSize = 65536;
+			}
+			catch (Exception ex)
+			{
+				_localLogger?.Error(ex.Message, ex);
+			}
+
 			while (_isRun)
 			{
 				try
 				{
-					var client = Client;
-					client.ReceiveBufferSize = 65525;
-					client.WaitData(_stream, IsRun, 10);
-
-					if (!_isRun || !client.Connected)
+					var stream = _stream;
+					if (stream == null)
 						return;
-					var clientAvailable = client.Available;
-					if (clientAvailable == 0)
-						continue;
-
-					var bytesFrom = new byte[clientAvailable];
-
-					var receivedSize = _stream.Read(bytesFrom, 0, (int)bytesFrom.Length);
-					buffer.AddRange(bytesFrom);
-					if (buffer.IsReadToEndCommands())
+					var received = stream.Read(readBuffer, 0, readBuffer.Length);
+					if (received == 0)
 					{
-						_localLogger?.Info($"Received ping, {bytesFrom.Length}");
-						var array = buffer.ToArray();
-						buffer.Clear();
-						var commands = array.GetCommands().Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
-						if (commands.Any())
-						{
-							_messageProcessingService.Process(array, this);
-						}
+						// удалённая сторона закрыла соединение
+						Stop();
+						return;
 					}
 
-
+					var commands = frameReader.Append(readBuffer, received);
+					if (commands.Count > 0)
+					{
+						_localLogger?.Info($"Received commands: {commands.Count}");
+						_messageProcessingService.Process(commands, this);
+					}
 				}
 				catch (ObjectDisposedException ode)
 				{
+					if (!_isRun)
+						return; // соединение закрыто через Stop()
 					Stop();
 					_localLogger?.Error(ode.Message, ode);
+					return;
 				}
-
 				catch (SocketException socketException)
 				{
+					if (!_isRun)
+						return;
 					if (socketException.ErrorCode == 10054)
 					{
 						Stop();
@@ -221,19 +241,25 @@ namespace FileStorage.Contracts.Impl.Connections
 				}
 				catch (Exception ex)
 				{
+					if (!_isRun)
+						return;
 					var se = ex.InnerException as SocketException;
 					if (se != null && (se.ErrorCode == 10054 || se.ErrorCode == 10053))
 					{
 						Stop();
-
 					}
 					_localLogger?.Error(ex.Message, ex);
 				}
+
+				// при оборванном соединении Read сразу упадёт снова — не крутимся в цикле
+				var client = Client;
+				if (client == null || !client.Connected)
+				{
+					Stop();
+					return;
+				}
 			}
 		}
-
-
-
 
 		public override void Start()
 		{
@@ -287,16 +313,16 @@ namespace FileStorage.Contracts.Impl.Connections
 				return false;
 			try
 			{
-				var bytes = new List<byte>(message.Length + 2);
-				bytes.Add(123);
-				bytes.Add((byte)'@');
-				bytes.AddRange(BitConverter.GetBytes(DateTime.UtcNow.Ticks));
-				bytes.AddRange(BitConverter.GetBytes(message.Length));
-				bytes.AddRange(message);
-				bytes.Add((byte)'#');
+				// '{' '@' + время (Int64) + длина (Int32) + данные + '#' — один массив вместо List<byte> и ToArray
+				var array = new byte[message.Length + 15];
+				array[0] = 123;
+				array[1] = (byte)'@';
+				BitConverter.TryWriteBytes(new Span<byte>(array, 2, 8), DateTime.UtcNow.Ticks);
+				BitConverter.TryWriteBytes(new Span<byte>(array, 10, 4), message.Length);
+				Buffer.BlockCopy(message, 0, array, 14, message.Length);
+				array[array.Length - 1] = (byte)'#';
 
 				var broadcastStream = clientClient.GetStream();
-				var array = bytes.ToArray();
 				broadcastStream.Write(array, 0, array.Length);
 				broadcastStream.Flush();
 

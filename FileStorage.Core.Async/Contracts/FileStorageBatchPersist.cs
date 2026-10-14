@@ -18,7 +18,8 @@ namespace FileStorage.Contracts
 
 	internal static class BatchStreamHelper
 	{
-		public const int ChunkSize = 11000;
+		// 64 КБ: в 6 раз меньше запросов, чем при 11000 байт, и буфер ещё не попадает в кучу больших объектов (85 000 байт)
+		public const int ChunkSize = 64 * 1024;
 
 		/// <summary>
 		/// Читает из потока, пока буфер не заполнится или поток не закончится.

@@ -9,7 +9,7 @@ namespace FileStorage.Core.Entities
 {
 	/// <summary>
 	/// Журнал событий в памяти, сгруппированный по месяцам.
-	/// Все обращения к словарям идут под одной блокировкой: класс используется из нескольких потоков
+	/// Все обращения к словарю месяцев идут под одной блокировкой: класс используется из нескольких потоков
 	/// (запись событий, таймеры Flush/Check, параллельный ClearTtl, чтение журнала).
 	/// </summary>
 	public sealed class EventMessageScope
@@ -17,6 +17,10 @@ namespace FileStorage.Core.Entities
 		private readonly object _sync = new object();
 
 		private readonly Dictionary<DateTime, EventMessageGroup> _group;
+
+		// Один экземпляр строки на каждый FolderId: у папки много файлов, а при чтении журнала
+		// каждая строка файла давала свою копию FolderId.
+		private readonly Dictionary<string, string> _folderIds = new Dictionary<string, string>();
 
 		private DateTime _min;
 
@@ -70,10 +74,22 @@ namespace FileStorage.Core.Entities
 			return eventMessageGroup;
 		}
 
+		private string InternFolderId(string folderId)
+		{
+			if (string.IsNullOrEmpty(folderId))
+				return folderId;
+			string pooled;
+			if (_folderIds.TryGetValue(folderId, out pooled))
+				return pooled;
+			_folderIds.Add(folderId, folderId);
+			return folderId;
+		}
+
 		public void Add(EventMessage message)
 		{
 			lock (_sync)
 			{
+				message.FolderId = InternFolderId(message.FolderId);
 				SetMinMaxInternal(message.Time);
 				GetOrCreateGroup(GetDateTime(message.Time), 100).Add(message);
 				_last = message;
@@ -95,6 +111,7 @@ namespace FileStorage.Core.Entities
 					var eventMessageGroup = GetOrCreateGroup(g.Key, g.Count());
 					foreach (var message in g)
 					{
+						message.FolderId = InternFolderId(message.FolderId);
 						SetMinMaxInternal(message.Time);
 						eventMessageGroup.Add(message);
 						_last = message;
@@ -105,16 +122,30 @@ namespace FileStorage.Core.Entities
 
 		public List<EventMessage> GetByDate(DateTime time, int take)
 		{
+			var result = new List<EventMessage>();
+			if (take <= 0)
+				return result;
+
 			var date = GetDateTime(time);
+			List<EventMessageGroup> groups;
 			lock (_sync)
 			{
-				return _group.Where(x => x.Key >= date)
-					.SelectMany(s => s.Value)
-					.Where(v => v.Time >= time)
-					.OrderBy(x => x.Time)
-					.Take(take)
+				groups = _group.Where(x => x.Key >= date)
+					.OrderBy(x => x.Key)
+					.Select(x => x.Value)
 					.ToList();
 			}
+
+			// Месяцы не пересекаются по времени, поэтому события, взятые по порядку месяцев из отсортированных
+			// групп, уже упорядочены. Раньше на каждый вызов перебирались и сортировались все события
+			// начиная с нужного месяца, причём под общей блокировкой, останавливавшей запись.
+			foreach (var group in groups)
+			{
+				if (result.Count >= take)
+					break;
+				group.CopySortedFrom(time, take - result.Count, result);
+			}
+			return result;
 		}
 
 		public List<EventMessage> GetToDate(DateTime time)
@@ -170,13 +201,20 @@ namespace FileStorage.Core.Entities
 	{
 		public EventMessageGroup(DateTime date, int capacity = 100)
 		{
-			_events = new Dictionary<string, Dictionary<string, EventMessage>>(capacity);
+			_events = new Dictionary<string, object>(capacity);
 			Date = date;
 		}
 		private readonly object _sync = new object();
 
-		// id файла → (папка → последнее событие); у FileStorage папка всегда пустая
-		private readonly Dictionary<string, Dictionary<string, EventMessage>> _events;
+		// id файла → последнее событие (EventMessage), а если у id больше одной папки —
+		// словарь «папка → последнее событие». У FileStorage папок нет, у FolderStorage почти всегда одна,
+		// поэтому отдельный словарь на каждый id не создаётся.
+		private readonly Dictionary<string, object> _events;
+
+		// события, отсортированные по времени; сбрасывается при изменении группы
+		private EventMessage[] _sorted;
+
+		private int _version;
 
 		public DateTime Date { get; private set; }
 
@@ -184,20 +222,38 @@ namespace FileStorage.Core.Entities
 		{
 			lock (_sync)
 			{
+				_sorted = null;
+				_version++;
+
 				var folder = eventMessage.FolderId ?? string.Empty;
-				Dictionary<string, EventMessage> byFolder;
-				if (!_events.TryGetValue(eventMessage.Id, out byFolder))
+				object current;
+				if (!_events.TryGetValue(eventMessage.Id, out current) || folder.Length == 0)
 				{
-					byFolder = new Dictionary<string, EventMessage>(1);
-					_events.Add(eventMessage.Id, byFolder);
+					// Первое событие файла или событие без папки (FileStorage или старые записи журнала
+					// FolderStorage): оно относится к файлу целиком, как раньше, когда журнал хранился только по id.
+					_events[eventMessage.Id] = eventMessage;
+					return;
 				}
-				else if (folder.Length == 0)
+
+				var single = current as EventMessage;
+				if (single != null)
 				{
-					// Событие без папки (FileStorage или старые записи журнала FolderStorage) относится к файлу целиком —
-					// как раньше, когда журнал хранился только по id.
-					byFolder.Clear();
+					var currentFolder = single.FolderId ?? string.Empty;
+					if (currentFolder == folder)
+					{
+						_events[eventMessage.Id] = eventMessage;
+						return;
+					}
+					// вторая папка для того же id — только тогда нужен словарь
+					_events[eventMessage.Id] = new Dictionary<string, EventMessage>(2)
+					{
+						[currentFolder] = single,
+						[folder] = eventMessage
+					};
+					return;
 				}
-				byFolder[folder] = eventMessage;
+
+				((Dictionary<string, EventMessage>)current)[folder] = eventMessage;
 			}
 		}
 
@@ -216,11 +272,15 @@ namespace FileStorage.Core.Entities
 		{
 			lock (_sync)
 			{
-				Dictionary<string, EventMessage> byFolder;
-				if (!_events.TryGetValue(id, out byFolder))
+				object current;
+				if (!_events.TryGetValue(id, out current))
 					return null;
+				var single = current as EventMessage;
+				if (single != null)
+					return single;
+
 				EventMessage latest = null;
-				foreach (var eventMessage in byFolder.Values)
+				foreach (var eventMessage in ((Dictionary<string, EventMessage>)current).Values)
 				{
 					if (latest == null || eventMessage.Time >= latest.Time)
 						latest = eventMessage;
@@ -229,12 +289,74 @@ namespace FileStorage.Core.Entities
 			}
 		}
 
+		/// <summary>
+		/// Добавляет в result не больше count событий с Time >= time в порядке времени
+		/// </summary>
+		internal void CopySortedFrom(DateTime time, int count, List<EventMessage> result)
+		{
+			EventMessage[] sorted;
+			int version;
+			var needSort = false;
+			lock (_sync)
+			{
+				sorted = _sorted;
+				version = _version;
+				if (sorted == null)
+				{
+					// новый снимок принадлежит только этому вызову; общий отсортированный массив не меняется
+					sorted = Snapshot();
+					needSort = true;
+				}
+			}
+
+			if (needSort)
+			{
+				// сортируем вне блокировки, чтобы не задерживать запись; результат запоминаем,
+				// только если группа за это время не менялась
+				Array.Sort(sorted, (x, y) => x.Time.CompareTo(y.Time));
+				lock (_sync)
+				{
+					if (_version == version)
+						_sorted = sorted;
+				}
+			}
+
+			// бинарный поиск первого события с Time >= time
+			int low = 0, high = sorted.Length;
+			while (low < high)
+			{
+				var middle = low + (high - low) / 2;
+				if (sorted[middle].Time < time)
+					low = middle + 1;
+				else
+					high = middle;
+			}
+			for (var i = low; i < sorted.Length && count > 0; i++, count--)
+			{
+				result.Add(sorted[i]);
+			}
+		}
+
+		private EventMessage[] Snapshot()
+		{
+			var list = new List<EventMessage>(_events.Count);
+			foreach (var value in _events.Values)
+			{
+				var single = value as EventMessage;
+				if (single != null)
+					list.Add(single);
+				else
+					list.AddRange(((Dictionary<string, EventMessage>)value).Values);
+			}
+			return list.ToArray();
+		}
+
 		public IEnumerator<EventMessage> GetEnumerator()
 		{
 			// перебираем снимок, чтобы параллельный Add не ломал перечисление
 			lock (_sync)
 			{
-				return _events.Values.SelectMany(x => x.Values).ToList().GetEnumerator();
+				return ((IEnumerable<EventMessage>)Snapshot()).GetEnumerator();
 			}
 		}
 
@@ -245,7 +367,7 @@ namespace FileStorage.Core.Entities
 	}
 	public sealed class EventMessage
 	{
-        public string FolderId { get; set; }
+		public string FolderId { get; set; }
 
 		public string Id { get; set; }
 

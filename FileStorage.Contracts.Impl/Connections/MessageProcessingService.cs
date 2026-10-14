@@ -3,6 +3,7 @@ using FileStorage.Core.Contracts;
 using FileStorage.Core.Interfaces;
 using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.Text;
 
 namespace FileStorage.Contracts.Impl.Connections
@@ -40,42 +41,50 @@ namespace FileStorage.Contracts.Impl.Connections
 
 		public ProcessingResponse Process(byte[] bytes, IWebSocketContainer from)
 		{
-			var result = new ProcessingResponse()
-			{
-			};
-			TcpCommonMessage message = null;
 			_localLogger.Info($"Receive: {bytes.Length}");
-			var commands = bytes.GetCommands();
+			return Process(bytes.GetCommands(), from);
+		}
+
+		/// <summary>
+		/// Обрабатывает все команды пачки. Раньше обрабатывалась только первая, остальные терялись.
+		/// Возвращает первый непустой ответ; если его нет, а при обработке была ошибка, — ответ с ошибкой.
+		/// </summary>
+		public ProcessingResponse Process(IReadOnlyList<string> commands, IWebSocketContainer from)
+		{
+			ProcessingResponse response = null;
+			TcpCommonMessage error = null;
+			var processedAny = false;
 			foreach (var command in commands)
 			{
-
 				if (string.IsNullOrWhiteSpace(command))
 					continue;
+				processedAny = true;
+				TcpCommonMessage message = null;
 				try
 				{
 					message = MapData(command);
-					return ProcessSingleCommand(@from, message);
+					var commandResponse = ProcessSingleCommand(@from, message);
+					if (response == null)
+						response = commandResponse;
 				}
 				catch (Exception e)
 				{
-					message = message ?? new TcpCommonMessage();
-					message.Error = new ErrorChatMessage() { Error = e.Message };
-					message.Type = TcpMessageType.InternalServerError;
-					_localLogger?.Error($"{command};{e.Message}", e);
+					error = message ?? new TcpCommonMessage();
+					error.Error = new ErrorChatMessage() { Error = e.Message };
+					error.Type = TcpMessageType.InternalServerError;
+					// саму команду (в ней может быть содержимое файла) в лог не пишем
+					_localLogger?.Error($"{error.RequestId};{e.Message}", e);
 				}
-
 			}
 
+			if (response != null || (processedAny && error == null))
+				return response;
 
-
-
-
-
-
-			var resultBytes = GetBytes(message);
-			result.Bytes = resultBytes;
-			return result;
-
+			// как и раньше: без команд или при ошибке — ответ с сериализованным сообщением
+			return new ProcessingResponse()
+			{
+				Bytes = GetBytes(error)
+			};
 		}
 
 		private ProcessingResponse ProcessSingleCommand(IWebSocketContainer @from,
@@ -363,8 +372,8 @@ namespace FileStorage.Contracts.Impl.Connections
 			var serializeObject = response.SerializeObject();
 			var resultBytes = _encoding.GetBytes(serializeObject);
 
-
-			_localLogger.Info($"Processed:Bytes:{resultBytes.Length}, Content:{serializeObject}");
+			// Раньше в лог писался весь ответ, включая содержимое файла в base64: огромные строки на каждый ответ.
+			_localLogger.Info($"Processed: {response?.RequestId}, Bytes:{resultBytes.Length}");
 			return resultBytes;
 		}
 

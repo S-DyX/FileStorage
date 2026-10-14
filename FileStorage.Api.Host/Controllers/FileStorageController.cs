@@ -127,21 +127,22 @@ namespace FileStorage.Api.Host.Controllers
 			if (files == null)
 				return BadRequest();
 			var result = new List<object>();
-			var memoryStream = new MemoryStream();
 			if (files.Count == 0)
 			{
 				var file = Request.Multipart(ModelState);
-				memoryStream = file?.Stream as MemoryStream;
-				if (memoryStream != null)
+				if (file?.Stream != null)
 				{
-					var name = file.File.Name;
-					var id = _fileStorageService.GetIdByExternal(name);
-					_fileStorageService.SaveStream(memoryStream, id, storageName);
-					result.Add(new
+					using (var stream = file.Stream)
 					{
-						FileName = name,
-						Id = id
-					});
+						var name = file.File.Name;
+						var id = _fileStorageService.GetIdByExternal(name);
+						_fileStorageService.SaveStream(stream, id, storageName);
+						result.Add(new
+						{
+							FileName = name,
+							Id = id
+						});
+					}
 				}
 			}
 			else
@@ -149,20 +150,22 @@ namespace FileStorage.Api.Host.Controllers
 				foreach (var file in files)
 				{
 					var name = WebUtility.HtmlDecode(file.FileName ?? file.Name);
-					
-					file.CopyTo(memoryStream);
-					memoryStream.Position = 0;
-					var id = _fileStorageService.GetIdByExternal(name);
-					_fileStorageService.SaveStream(memoryStream, id, storageName);
-					result.Add(new
+
+					// Читаем файл прямо из формы: ASP.NET Core уже буферизует большие файлы на диск.
+					// Раньше каждый файл копировался в общий MemoryStream, который между файлами не очищался:
+					// если следующий файл был короче, к нему сохранялся хвост предыдущего.
+					using (var stream = file.OpenReadStream())
 					{
-						FileName = name,
-						Id = id
-					});
+						var id = _fileStorageService.GetIdByExternal(name);
+						_fileStorageService.SaveStream(stream, id, storageName);
+						result.Add(new
+						{
+							FileName = name,
+							Id = id
+						});
+					}
 				}
 			}
-
-			
 
 			return Ok();
 		}

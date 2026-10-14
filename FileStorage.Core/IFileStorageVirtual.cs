@@ -172,23 +172,21 @@ namespace FileStorage.Core
 	/// </summary>
 	public sealed class FileStorageVirtual : IFileStorageVirtual
 	{
-		// кеш «файл существует»: истекает через сутки, после чего наличие файла перепроверяется на диске
-		private readonly Cache<string, string> _dictFiles;
-		// все известные файлы (GetCount/GetFileNames), без срока жизни
+		// Все известные файлы: служит и проверкой «файл существует», и источником для GetCount/GetFileNames.
+		// Раньше в Core каждый файл дополнительно лежал в MemoryCache (сотни байт на запись), а все каталоги —
+		// в отдельном кеше, который ни для чего не использовался.
 		private readonly IndexedFileList _files;
-		private readonly Cache<string, string> _dictDirectories;
-		// каталоги, уже обойдённые при подсчёте файлов (GetCount(rootDirectory))
+		// корни хранилищ, уже обойдённые при подсчёте файлов (GetCount(rootDirectory))
 		private readonly HashSet<string> _countedDirectories = new HashSet<string>();
 		private readonly object _syncDirectory = new object();
 		private readonly object _sync = new object();
+		private static readonly int MaxIoParallelism = Math.Max(2, Math.Min(Environment.ProcessorCount, 8));
 
 		/// <summary>
 		/// Ctor
 		/// </summary>
 		public FileStorageVirtual(int capacity = 20000)
 		{
-			_dictFiles = new Cache<string, string>(60 * 1440);
-			_dictDirectories = new Cache<string, string>(60 * 1440);
 			_files = new IndexedFileList(capacity);
 		}
 
@@ -200,8 +198,11 @@ namespace FileStorage.Core
 		public bool Exists(string fileName)
 		{
 			var key = GetKey(fileName);
-			if (_dictFiles.IsExists(key))
-				return true;
+			lock (_sync)
+			{
+				if (_files.Contains(key))
+					return true;
+			}
 
 			var exists = File.Exists(key) || (key != fileName && File.Exists(fileName));
 			if (exists)
@@ -228,9 +229,7 @@ namespace FileStorage.Core
 		{
 			lock (_sync)
 			{
-				var key = GetKey(fileName);
-				_files.Add(key);
-				_dictFiles.SetValue(key, key);
+				_files.Add(GetKey(fileName));
 			}
 		}
 		/// <summary>
@@ -241,9 +240,7 @@ namespace FileStorage.Core
 		{
 			lock (_sync)
 			{
-				var key = GetKey(fileName);
-				_files.Remove(key);
-				_dictFiles.Delete(key);
+				_files.Remove(GetKey(fileName));
 			}
 		}
 
@@ -260,9 +257,7 @@ namespace FileStorage.Core
 					File.Delete(key);
 				else if (File.Exists(fileName))
 					File.Delete(fileName);
-				// удаление из списка за O(1); раньше List.Remove проходил весь список
 				_files.Remove(key);
-				_dictFiles.Delete(key);
 			}
 		}
 
@@ -305,13 +300,11 @@ namespace FileStorage.Core
 		/// <param name="createDirectory"></param>
 		public void AddDirectory(string directory, bool createDirectory)
 		{
-			if (createDirectory && !Directory.Exists(directory))
+			// Каталоги больше не запоминаются: этот кеш никто не читал, а запись в него шла
+			// при каждом обращении к файлу. CreateDirectory ничего не делает, если каталог уже есть.
+			if (createDirectory)
 			{
 				Directory.CreateDirectory(directory);
-			}
-			lock (_syncDirectory)
-			{
-				_dictDirectories[directory] = directory;
 			}
 		}
 		/// <summary>
@@ -329,13 +322,11 @@ namespace FileStorage.Core
 						Delete(file);
 					}
 					// Подкаталоги не трогаем: каталог удаляем, только если он опустел.
-					// Раньше Directory.Delete без recursive падал на каталоге с подкаталогами.
 					if (!Directory.EnumerateFileSystemEntries(directory).Any())
 					{
 						Directory.Delete(directory);
 					}
 				}
-				_dictDirectories.Delete(directory);
 				_countedDirectories.Remove(directory);
 			}
 		}
@@ -352,10 +343,9 @@ namespace FileStorage.Core
 			{
 				counted = _countedDirectories.Contains(rootDirectory);
 			}
-			// раньше для уже известного корня возвращался 0
 			if (!counted && Directory.Exists(rootDirectory))
 			{
-				GetSubDirectoryCount(Directory.GetDirectories(rootDirectory));
+				CountFiles(Directory.GetDirectories(rootDirectory));
 				lock (_syncDirectory)
 				{
 					_countedDirectories.Add(rootDirectory);
@@ -369,13 +359,11 @@ namespace FileStorage.Core
 			// блокировки берём по очереди, а не вложенно: DeleteDirectory берёт их в обратном порядке
 			lock (_syncDirectory)
 			{
-				_dictDirectories.Clear();
 				_countedDirectories.Clear();
 			}
 			lock (_sync)
 			{
 				_files.Clear();
-				_dictFiles.Clear();
 			}
 		}
 
@@ -387,57 +375,49 @@ namespace FileStorage.Core
 		{
 			lock (_sync)
 			{
-				var released = _files.RemoveAll(f => f.StartsWith(directory, StringComparison.Ordinal));
-				foreach (var file in released)
-				{
-					_dictFiles.Delete(file);
-				}
+				_files.RemoveAll(f => f.StartsWith(directory, StringComparison.Ordinal));
 			}
 			lock (_syncDirectory)
 			{
 				_countedDirectories.RemoveWhere(d => d.StartsWith(directory, StringComparison.Ordinal));
 			}
-			// записи кеша каталогов (MemoryCache) перебрать нельзя; лишняя запись безвредна:
-			// AddDirectory всё равно проверяет наличие каталога на диске
 		}
 
-		private void GetSubDirectoryCount(string[] directories)
+		private void CountFiles(string[] directories)
 		{
-			Parallel.ForEach(directories, dir =>
+			// Параллельно обходим только каталоги верхнего уровня, а внутри — последовательно.
+			// Раньше вложенные Parallel.ForEach с рекурсией перегружали пул потоков дисковыми операциями.
+			// Повторно добавленный файл не дублируется: список хранит каждый путь один раз.
+			Parallel.ForEach(directories, new ParallelOptions { MaxDegreeOfParallelism = MaxIoParallelism }, dir => CountDirectory(dir));
+		}
+
+		private void CountDirectory(string dir)
+		{
+			var subDirectories = Directory.GetDirectories(dir);
+			if (subDirectories.Length > 0)
 			{
-				// Отмечаем каталоги, уже обойдённые подсчётом. Раньше проверялся общий кеш каталогов,
-				// куда каталог попадает и при обычной работе, и такие каталоги не подсчитывались.
-				lock (_syncDirectory)
+				foreach (var subDirectory in subDirectories)
 				{
-					if (!_countedDirectories.Add(dir))
-						return;
+					CountDirectory(subDirectory);
 				}
-				var d = Directory.GetDirectories(dir);
-				if (!d.Any())
+				return;
+			}
+
+			foreach (var fileName in Directory.EnumerateFiles(dir))
+			{
+				if (fileName.EndsWith(".tmp"))
 				{
-					AddDirectory(dir, false);
-					var files = Directory.GetFiles(dir);
-					Parallel.ForEach(files, fileName =>
-					{
-						if (fileName.EndsWith(".tmp"))
-						{
-							Delete(fileName);
-						}
-						else if (fileName.EndsWith(".log") || fileName.EndsWith(".old"))
-						{
-							// файлы журнала и его архивы не являются файлами хранилища
-						}
-						else
-						{
-							Add(fileName);
-						}
-					});
+					Delete(fileName);
+				}
+				else if (fileName.EndsWith(".log") || fileName.EndsWith(".old"))
+				{
+					// файлы журнала и его архивы не являются файлами хранилища
 				}
 				else
 				{
-					GetSubDirectoryCount(d);
+					Add(fileName);
 				}
-			});
+			}
 		}
 	}
 }

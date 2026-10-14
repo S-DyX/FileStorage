@@ -200,13 +200,12 @@ namespace FileStorage.Contracts.Impl
                 return null;
 
             var res = fileStorage.Get(id);
-            if (res == null)
+            if (res?.Stream == null)
                 return null;
             using (var stream = res.Stream)
             {
-                var length = stream.Length;
-                var b = new byte[length];
-                stream.Read(b, 0, (int)length);
+                var b = new byte[stream.Length];
+                ReadFull(stream, b, b.Length);
                 return b;
             }
         }
@@ -218,30 +217,15 @@ namespace FileStorage.Contracts.Impl
                 var fileStorage = GetStorage(storageName);
                 if (!fileStorage.Exists(id))
                     return null;
-                var key = $"{id}_{offset}_{size}";
-                var data = _cache[key];
-                if (data != null)
-                    return data;
 
+                // Страницы больше не кешируются и не читаются наперёд: раньше каждый промах читал 6 страниц
+                // и складывал их в MemoryCache без ограничения размера. Повторные чтения обслуживает кеш ОС.
                 var res = fileStorage.Get(id);
-                if (res == null)
+                if (res?.Stream == null)
                     return null;
                 using (var stream = res.Stream)
                 {
-                    var b = GetBytes(offset, size, stream);
-                    _cache[key] = b;
-                    if (b.Length == size)
-                    {
-                        for (int i = 0; i < 5; i++)
-                        {
-                            offset += size;
-                            var nextPage = GetBytes(offset, size, stream);
-                            key = $"{id}_{offset}_{size}";
-                            _cache[key] = nextPage;
-                        }
-                    }
-
-                    return b;
+                    return GetBytes(offset, size, stream);
                 }
             }
             catch (Exception ex)
@@ -255,18 +239,30 @@ namespace FileStorage.Contracts.Impl
         private static byte[] GetBytes(long offset, int size, Stream stream)
         {
             var length = stream.Length;
-            if (offset >= stream.Length)
+            if (offset >= length || size <= 0)
                 return new byte[0];
-            var l = size + offset;
-
-            if (l > length)
+            if (size + offset > length)
             {
                 size = (int)(length - offset);
             }
             var b = new byte[size];
             stream.Position = offset;
-            stream.Read(b, 0, size);
+            ReadFull(stream, b, size);
             return b;
+        }
+
+        /// <summary>
+        /// Stream.Read может вернуть меньше запрошенного, даже если данные ещё есть, — читаем до конца
+        /// </summary>
+        private static int ReadFull(Stream stream, byte[] buffer, int count)
+        {
+            var total = 0;
+            int read;
+            while (total < count && (read = stream.Read(buffer, total, count - total)) > 0)
+            {
+                total += read;
+            }
+            return total;
         }
 
         public void SaveBytes(string id, byte[] bytes, int offset, int size, string storageName)
@@ -277,10 +273,8 @@ namespace FileStorage.Contracts.Impl
         public FileInfoResponse SaveBytes(byte[] bytes, string storageName)
         {
             var fileStorage = CreateStorage(storageName);
-            using (var stream = new MemoryStream())
+            using (var stream = new MemoryStream(bytes, false))
             {
-                stream.Write(bytes, 0, bytes.Length);
-                stream.Position = 0;
                 var res = fileStorage.SaveAsHash(stream);
                 return new FileInfoResponse(res.StorageId, res.Hash, res.Length, fileStorage.GetRelativeFileName(res.StorageId));
             }
@@ -288,10 +282,8 @@ namespace FileStorage.Contracts.Impl
 
         public FileInfoResponse SaveBytesByExternal(byte[] bytes, string externalId, string storageName)
         { 
-            using (var stream = new MemoryStream())
-            { 
-                stream.Write(bytes, 0, bytes.Length);
-                stream.Position = 0;
+            using (var stream = new MemoryStream(bytes, false))
+            {
                 var hash = externalId.GetSha1Hash();
                 return SaveStream(stream, hash, storageName);
             }

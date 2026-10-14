@@ -94,11 +94,13 @@ namespace FileStorage.Core
 			}
 		}
 
-		private void MoveFile(string fileNameTo, string filenameFrom, FileInfo fileInfo, FolderStorageInfo info)
+		private void MoveFile(string fileNameTo, string filenameFrom, FileInfo fileInfo, FolderStorageInfo info, bool contentAddressed = false)
 		{
 			var length = new FileInfo(filenameFrom).Length;
 			var target = new FileInfo(fileNameTo);
-			if (target.Exists && target.Length == length && StreamHelper.FilesAreEqual(fileNameTo, filenameFrom))
+			// Если id — это хеш содержимого (SaveAsHash), файл с тем же id и размером уже тот же самый:
+			// побайтное сравнение (чтение обоих файлов целиком) не нужно. Для явного id сравниваем содержимое.
+			if (target.Exists && target.Length == length && (contentAddressed || StreamHelper.FilesAreEqual(fileNameTo, filenameFrom)))
 			{
 				// такой же файл уже сохранён (например, повторный SaveAsHash) — перезаписывать не нужно
 				_fileStorageVirtual.Delete(filenameFrom);
@@ -167,7 +169,7 @@ namespace FileStorage.Core
 				.ToLookup(x => x.Id);
 			var save = new List<EventMessage>();
 			var foundAny = false;
-			Parallel.ForEach(files, file =>
+			Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = MaxIoParallelism }, file =>
 			{
 				if (file.Time > date)
 				{
@@ -236,19 +238,23 @@ namespace FileStorage.Core
 		{
 			var fullName = GetFullFileName(info, true);
 
+			long length;
 			using (var stream = File.Open(fullName, FileMode.Append, FileAccess.Write,
 				FileShare.ReadWrite | FileShare.Delete | FileShare.Read | FileShare.Write))
 			{
 				stream.Write(array, 0, array.Length);
-				stream.Flush(true);
-				stream.Close();
+				// Сброс в ОС без fsync — как и при обычном сохранении файла. Раньше Flush(true)
+				// на каждый вызов заставлял ждать физической записи на диск.
+				stream.Flush();
+				// размер берём из потока, а не отдельным запросом к файловой системе
+				length = stream.Length;
 			}
 			if (!_fileStorageVirtual.Exists(fullName))
 			{
 				_fileStorageVirtual.Add(fullName);
 			}
 			// раньше дописанный файл не попадал в журнал и не был виден синхронизации
-			_log.Write(EventType.FileSave, info.FileId, new FileInfo(fullName).Length, info.FolderId);
+			_log.Write(EventType.FileSave, info.FileId, length, info.FolderId);
 		}
 
 
@@ -259,11 +265,9 @@ namespace FileStorage.Core
 		/// <param name="id"></param>
 		public void Save(byte[] array, FolderStorageInfo info)
 		{
-			using (var stream = new MemoryStream())
+			// поток поверх массива, без копирования данных
+			using (var stream = new MemoryStream(array, false))
 			{
-				stream.Write(array, 0, array.Length);
-				stream.Flush();
-				stream.Position = 0;
 				Save(stream, info);
 			}
 		}
@@ -459,13 +463,13 @@ namespace FileStorage.Core
 				throw new NotSupportedException($"Changing depth is not supported when current depth is {_depth}: FolderId can not be restored from the path");
 
 			var logDirectory = GetLogDirectory();
-			var files = Directory.GetFiles(_rootDirectory, "*", SearchOption.AllDirectories)
-				.Where(f => !IsServiceFile(f))
-				.ToList();
+			// перечисляем лениво: массив всех путей хранилища целиком не строится
+			var files = Directory.EnumerateFiles(_rootDirectory, "*", SearchOption.AllDirectories)
+				.Where(f => !IsServiceFile(f));
 
 			// Сначала вычисляем все новые пути: если для какого-то файла путь построить нельзя,
 			// исключение возникнет до того, как будет перенесён хотя бы один файл.
-			var moves = new List<KeyValuePair<string, string>>(files.Count);
+			var moves = new List<KeyValuePair<string, string>>();
 			foreach (var file in files)
 			{
 				var folderId = GetFolderIdFromPath(file);
@@ -579,7 +583,7 @@ namespace FileStorage.Core
 			var freshIds = new HashSet<string>(freshEvents.Where(x => x.Type == EventType.FileSave).Select(x => x.Id));
 			var logDirectory = GetLogDirectory();
 			var depthFileName = GetDepthFileName();
-			foreach (var file in Directory.GetFiles(_rootDirectory, "*", SearchOption.AllDirectories))
+			foreach (var file in Directory.EnumerateFiles(_rootDirectory, "*", SearchOption.AllDirectories))
 			{
 				if (string.Equals(file, depthFileName, PathComparison))
 					continue;
@@ -721,35 +725,43 @@ namespace FileStorage.Core
 			return _log.GetDateById(info.FileId);
 		}
 
+		private static readonly int MaxIoParallelism = Math.Max(2, Math.Min(Environment.ProcessorCount, 8));
+
 		private void RefreshSub(string[] directories)
 		{
+			// Параллельно обходим только каталоги верхнего уровня, а внутри — последовательно.
+			// Раньше вложенные Parallel.ForEach с рекурсией перегружали пул потоков дисковыми операциями.
 			var logDirectory = GetLogDirectory();
-			Parallel.ForEach(directories, dir =>
+			Parallel.ForEach(directories, new ParallelOptions { MaxDegreeOfParallelism = MaxIoParallelism }, dir =>
 			{
 				// каталог журнала событий не содержит файлов хранилища
 				if ((dir + Path.DirectorySeparatorChar).StartsWith(logDirectory, PathComparison))
 					return;
-
-				var d = Directory.GetDirectories(dir);
-				if (!d.Any())
-				{
-					_fileStorageVirtual.AddDirectory(dir, false);
-					var files = Directory.GetFiles(dir, "*", SearchOption.TopDirectoryOnly);
-					Parallel.ForEach(files, f =>
-					{
-						if (f.EndsWith(".tmp", PathComparison))
-							return;
-						var fileInfo = new FileInfo(f);
-						AddFile(fileInfo);
-						// в кеш кладём полный путь — в том же виде, в каком его ищут Exists/Delete
-						_fileStorageVirtual.Add(f);
-					});
-				}
-				else
-				{
-					RefreshSub(d);
-				}
+				RefreshDirectory(dir);
 			});
+		}
+
+		private void RefreshDirectory(string dir)
+		{
+			var subDirectories = Directory.GetDirectories(dir);
+			if (subDirectories.Length > 0)
+			{
+				foreach (var subDirectory in subDirectories)
+				{
+					RefreshDirectory(subDirectory);
+				}
+				return;
+			}
+
+			foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.TopDirectoryOnly))
+			{
+				if (f.EndsWith(".tmp", PathComparison))
+					continue;
+				var fileInfo = new FileInfo(f);
+				AddFile(fileInfo);
+				// в кеш кладём полный путь — в том же виде, в каком его ищут Exists/Delete
+				_fileStorageVirtual.Add(f);
+			}
 		}
 
 		private void AddFile(FileInfo fileInfo)

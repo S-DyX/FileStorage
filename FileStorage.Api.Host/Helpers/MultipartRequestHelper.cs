@@ -70,7 +70,9 @@ namespace FileStorage.Api.Host.Helpers
 				var reader = new MultipartReader(boundary, request.Body);
 				
 				var section = reader.ReadNextSectionAsync().Result;
-				request.Body.Position = 0;
+				// тело может быть не буферизовано (буферизация включается только для небольших запросов)
+				if (request.Body.CanSeek)
+					request.Body.Position = 0;
 				while (section != null)
 				{
 					var hasContentDispositionHeader =
@@ -101,22 +103,32 @@ namespace FileStorage.Api.Host.Helpers
 								throw new InvalidOperationException("invalid modelState ");
 							}
 
-							var body = section.Body;
 							var fileName = WebUtility.HtmlEncode(
 								contentDisposition.FileName);
-							var trustedFileNameForFileStorage = Path.GetRandomFileName();
-							var memoryStream = new MemoryStream();
-							section.Body.CopyTo(memoryStream);
-							memoryStream.Position = 0;
+							// Раньше файл целиком копировался в MemoryStream. Теперь — во временный файл,
+							// который удаляется при закрытии потока; копирование асинхронное, потому что
+							// синхронное чтение тела запроса в Kestrel запрещено.
+							var tempFile = new FileStream(Path.Combine(Path.GetTempPath(), Path.GetRandomFileName()),
+								FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 81920,
+								FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+							try
+							{
+								section.Body.CopyToAsync(tempFile).GetAwaiter().GetResult();
+								tempFile.Position = 0;
+							}
+							catch
+							{
+								tempFile.Dispose();
+								throw;
+							}
 							var file = new FileResult()
 							{
-								Stream = memoryStream,
+								Stream = tempFile,
 								File = new FileDataModel()
 								{
 									Name = WebUtility.HtmlDecode(fileName).Replace("\"", ""),
 									MimeType = section.ContentType,
-									Size = memoryStream.Length
-
+									Size = tempFile.Length
 								}
 							};
 							return file;
