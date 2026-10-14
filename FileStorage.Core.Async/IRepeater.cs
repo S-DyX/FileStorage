@@ -60,7 +60,8 @@ namespace FileStorage.Core
 
 		private OperationsQueue _operationsQueue;
 
-		private bool _isProcessing;
+		// 0 — свободен, 1 — выполняется; меняется только через Interlocked
+		private int _isProcessing;
 
 		private Timer _timer;
 
@@ -106,24 +107,30 @@ namespace FileStorage.Core
 			try
 			{
 				this._operationsQueue.Enqueue();
-				if (_isProcessing)
+				// атомарно занимаем флаг: иначе два срабатывания таймера могли выполнить действие параллельно
+				if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) != 0)
 					return;
 
-				_isProcessing = true;
-				Action<CancellationToken> operation = this._operationsQueue.Dequeue();
-				while (null != operation)
+				try
 				{
-					try
+					Action<CancellationToken> operation = this._operationsQueue.Dequeue();
+					while (null != operation)
 					{
-						operation(_cancellationTokenSource.Token);
+						try
+						{
+							operation(_cancellationTokenSource.Token);
+						}
+						catch (Exception e)
+						{
+							RaiseError(e);
+						}
+						operation = this._operationsQueue.Dequeue();
 					}
-					catch (Exception e)
-					{
-						RaiseError(e);
-					}
-					operation = this._operationsQueue.Dequeue();
 				}
-				_isProcessing = false;
+				finally
+				{
+					Interlocked.Exchange(ref _isProcessing, 0);
+				}
 			}
 			catch { }
 

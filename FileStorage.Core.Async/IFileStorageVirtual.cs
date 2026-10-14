@@ -112,8 +112,12 @@ namespace FileStorage.Core
 		public bool Exists(string fileName)
 		{
 			var lower = GetKey(fileName);
-			if (_dictFiles.ContainsKey(lower))
-				return true;
+			// словарь меняется из других потоков (в том числе фоновым подсчётом при старте), читаем под блокировкой
+			lock (_sync)
+			{
+				if (_dictFiles.ContainsKey(lower))
+					return true;
+			}
 
 			var exists = File.Exists(lower) || (lower != fileName && File.Exists(fileName));
 			if (exists)
@@ -244,9 +248,9 @@ namespace FileStorage.Core
 		/// <param name="directory"></param>
 		public void DeleteDirectory(string directory)
 		{
-			if (_dictDirectories.ContainsKey(directory))
+			lock (_syncDirectory)
 			{
-				lock (_syncDirectory)
+				if (_dictDirectories.ContainsKey(directory))
 				{
 					if (Directory.Exists(directory))
 					{
@@ -271,7 +275,12 @@ namespace FileStorage.Core
 		/// <returns></returns>
 		public long GetCount(string rootDirectory)
 		{
-			if (!_dictDirectories.ContainsKey(rootDirectory))
+			bool known;
+			lock (_syncDirectory)
+			{
+				known = _dictDirectories.ContainsKey(rootDirectory);
+			}
+			if (!known)
 			{
 				var directories = Directory.GetDirectories(rootDirectory);
 				GetSubDirectoryCount(directories);
@@ -282,9 +291,13 @@ namespace FileStorage.Core
 
 		public void Drop()
 		{
-			lock (_sync)
+			// блокировки берём по очереди, а не вложенно: DeleteDirectory берёт их в обратном порядке
+			lock (_syncDirectory)
 			{
 				_dictDirectories.Clear();
+			}
+			lock (_sync)
+			{
 				_files.Clear();
 				_dictFiles.Clear();
 			}
@@ -312,8 +325,9 @@ namespace FileStorage.Core
 						{
 							Delete(fileName);
 						}
-						else if (fileName.EndsWith(".log"))
+						else if (fileName.EndsWith(".log") || fileName.EndsWith(".old"))
 						{
+							// файлы журнала и его архивы (после Rewrite) не являются файлами хранилища
 						}
 						else
 						{

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -36,38 +37,19 @@ namespace FileStorage.Contracts
 			return _process.ContainsKey(key);
 		}
 
-	 
 		public void Register(string key)
 		{
-			Check(key);
-			lock (_syncInstance)
-			{
-				Check(key);
-				_process.Add(key, true);
-			}
-		}
-		public void Release(string key)
-		{
-			if (!_process.ContainsKey(key))
-				return;
-
-			lock (_syncInstance)
-			{
-				if (_process.ContainsKey(key))
-					_process.Remove(key);
-			}
-		}
-
-		private void Check(string key)
-		{
-			if (_process.ContainsKey(key))
+			// TryAdd атомарен: два потока не смогут зарегистрировать один ключ
+			if (!_process.TryAdd(key, true))
 			{
 				throw new InvalidOperationException("Key is already used:" + key);
 			}
 		}
+		public void Release(string key)
+		{
+			_process.TryRemove(key, out _);
+		}
 
-
-		private readonly object _syncInstance = new object();
-		private readonly Dictionary<string, bool> _process = new Dictionary<string, bool>();
+		private readonly ConcurrentDictionary<string, bool> _process = new ConcurrentDictionary<string, bool>();
 	}
 }

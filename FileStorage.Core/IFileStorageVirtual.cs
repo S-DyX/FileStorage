@@ -90,6 +90,9 @@ namespace FileStorage.Core
 	{
 		private readonly Cache<string, string> _dictFiles;
 		private readonly List<string> _files;
+		// Полный список известных файлов. Кеш _dictFiles истекает через сутки, а список — нет,
+		// поэтому проверять "файл уже в списке" нужно по этому множеству, иначе появляются дубли.
+		private readonly HashSet<string> _fileSet;
 		private readonly Cache<string, string> _dictDirectories;
 		private readonly object _syncDirectory = new object();
 		private readonly object _sync = new object();
@@ -102,6 +105,7 @@ namespace FileStorage.Core
 			_dictFiles = new Cache<string, string>(60 * 1440);
 			_dictDirectories = new Cache<string, string>(60 * 1440);
 			_files = new List<string>(capacity);
+			_fileSet = new HashSet<string>(capacity);
 
 		}
 
@@ -142,11 +146,11 @@ namespace FileStorage.Core
 			lock (_sync)
 			{
 				var lower = GetKey(fileName);
-				if (!_dictFiles.IsExists(lower))
+				if (_fileSet.Add(lower))
 				{
 					_files.Add(lower);
-					_dictFiles.SetValue(lower, lower);
 				}
+				_dictFiles.SetValue(lower, lower);
 			}
 		}
 		/// <summary>
@@ -158,11 +162,11 @@ namespace FileStorage.Core
 			lock (_sync)
 			{
 				var lower = GetKey(fileName);
-				if (_dictFiles.IsExists(lower))
+				if (_fileSet.Remove(lower))
 				{
 					_files.Remove(lower);
-					_dictFiles.Delete(lower);
 				}
+				_dictFiles.Delete(lower);
 			}
 		}
 
@@ -180,10 +184,9 @@ namespace FileStorage.Core
 					File.Delete(key);
 				else if (File.Exists(fileName))
 					File.Delete(fileName);
-				if (_dictFiles.IsExists(key))
+				_dictFiles.Delete(key);
+				if (_fileSet.Remove(key))
 				{
-
-					_dictFiles.Delete(key);
 					_files.Remove(key);
 				}
 			}
@@ -287,6 +290,7 @@ namespace FileStorage.Core
 			{
 				_dictDirectories.Clear();
 				_files.Clear();
+				_fileSet.Clear();
 				_dictFiles.Clear();
 			}
 		}

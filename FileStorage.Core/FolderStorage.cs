@@ -24,6 +24,11 @@ namespace FileStorage.Core
 		private readonly ILocalLogger _localLogger;
 		private IFileStorageLog _log;
 		private readonly string _rootDirectory;
+		// Глубина дерева каталогов этого хранилища. Хранится отдельно от общих настроек,
+		// чтобы ChangeDepthDirectory не влиял на другие хранилища с теми же настройками.
+		private int _depth;
+		private static readonly StringComparison PathComparison =
+			OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 		/// <summary>
 		/// Ctor
 		/// </summary>
@@ -39,6 +44,7 @@ namespace FileStorage.Core
 			_fileStorageVirtual = fileStorageVirtual;
 			_localLogger = localLogger;
 			_rootDirectory = GetRoot(_settings, name);
+			_depth = _settings.Depth;
 			_log = new FileStorageLog(_rootDirectory);
 			//Task.Factory.StartNew(() => _fileStorageVirtual.GetCount(_rootDirectory));
 		}
@@ -376,13 +382,18 @@ namespace FileStorage.Core
 		public bool DeleteTemp(FolderStorageInfo info)
 		{
 			var fileName = GetFullFileName(info);
-			var fileNameTmp = GetTempFileName(fileName);
-			if (_fileStorageVirtual.Exists(fileNameTmp))
+			var directory = Path.GetDirectoryName(fileName);
+			if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+				return false;
+
+			// Временные файлы пишутся как "<файл>_<sessionId>.tmp" (см. SaveToFile).
+			// sessionId сюда не передаётся, поэтому удаляем временные файлы всех сессий этого файла.
+			var tempFiles = Directory.GetFiles(directory, Path.GetFileName(fileName) + "_*.tmp", SearchOption.TopDirectoryOnly);
+			foreach (var tempFile in tempFiles)
 			{
-				_fileStorageVirtual.Delete(fileNameTmp);
-				return true;
+				_fileStorageVirtual.Delete(tempFile);
 			}
-			return false;
+			return tempFiles.Length > 0;
 		}
 
 		/// <summary>
@@ -398,7 +409,7 @@ namespace FileStorage.Core
 
 		private string GetDirectory(FolderStorageInfo info)
 		{
-			var depth = _settings.Depth;
+			var depth = _depth;
 
 			return GetDirectory(info, depth);
 		}
@@ -458,28 +469,74 @@ namespace FileStorage.Core
 		/// <param name="newDepth"></param>
 		public void ChangeDepthDirectory(int oldDepth, int newDepth)
 		{
-			var directories = Directory.GetDirectories(_rootDirectory, "*", SearchOption.TopDirectoryOnly);
-			foreach (var diretory in directories)
+			// oldDepth не используется: текущая глубина хранится в _depth.
+			if (newDepth < 0)
+				throw new ArgumentOutOfRangeException(nameof(newDepth));
+			if (!Directory.Exists(_rootDirectory))
 			{
-				var directoryInfo = new DirectoryInfo(diretory);
-				if (directoryInfo.Name.Length > newDepth)
+				_depth = newDepth;
+				return;
+			}
+			// При глубине 0 и 1 FolderId попадает в путь не целиком (обрезается по ElementsCount
+			// или теряется первый символ), поэтому восстановить его из пути и перенести файлы нельзя.
+			if (_depth <= 1)
+				throw new NotSupportedException($"Changing depth is not supported when current depth is {_depth}: FolderId can not be restored from the path");
+
+			var logDirectory = GetLogDirectory();
+			var files = Directory.GetFiles(_rootDirectory, "*", SearchOption.AllDirectories)
+				.Where(f => !f.StartsWith(logDirectory, PathComparison) && !f.EndsWith(".tmp", PathComparison))
+				.ToList();
+
+			// Сначала вычисляем все новые пути: если для какого-то файла путь построить нельзя,
+			// исключение возникнет до того, как будет перенесён хотя бы один файл.
+			var moves = new List<KeyValuePair<string, string>>(files.Count);
+			foreach (var file in files)
+			{
+				var fileDirectory = Path.GetDirectoryName(file) + Path.DirectorySeparatorChar;
+				// файлы в корне (FolderId не длиннее глубины) лежат там при любой глубине больше 1
+				if (fileDirectory.Length <= _rootDirectory.Length)
+					continue;
+
+				// при глубине больше 1 путь = символы FolderId, разделённые по уровням, + остаток FolderId
+				var relativeDirectory = fileDirectory.Substring(_rootDirectory.Length, fileDirectory.Length - _rootDirectory.Length - 1);
+				var folderId = relativeDirectory.Replace(Path.DirectorySeparatorChar.ToString(), string.Empty);
+				var fileId = Path.GetFileName(file);
+				var newDirectoryName = GetDirectory(new FolderStorageInfo()
 				{
-					var files = directoryInfo.GetFiles();
-					foreach (var file in files)
-					{
-						var newDirectoryName = GetDirectory(new FolderStorageInfo()
-						{
-							FolderId = file.Directory.Name,
-							FileId = file.Name
-						}, newDepth);
-						_fileStorageVirtual.AddDirectory(newDirectoryName, true);
-						var destFileName = Path.Combine(newDirectoryName, file.Name);
-						_fileStorageVirtual.Move(file.FullName, destFileName);
+					FolderId = folderId,
+					FileId = fileId
+				}, newDepth);
+				var destFileName = newDirectoryName + Path.DirectorySeparatorChar + fileId;
+				if (!string.Equals(file, destFileName, PathComparison))
+					moves.Add(new KeyValuePair<string, string>(file, destFileName));
+			}
 
-					}
+			foreach (var move in moves)
+			{
+				_fileStorageVirtual.AddDirectory(Path.GetDirectoryName(move.Value), true);
+				_fileStorageVirtual.Move(move.Key, move.Value);
+			}
 
+			_depth = newDepth;
+			DeleteEmptyDirectories(_rootDirectory, logDirectory);
+		}
+
+		private string GetLogDirectory()
+		{
+			return Path.Combine(_rootDirectory, "Log") + Path.DirectorySeparatorChar;
+		}
+
+		private static void DeleteEmptyDirectories(string directory, string logDirectory)
+		{
+			foreach (var subDirectory in Directory.GetDirectories(directory))
+			{
+				if ((subDirectory + Path.DirectorySeparatorChar).StartsWith(logDirectory, PathComparison))
+					continue;
+				DeleteEmptyDirectories(subDirectory, logDirectory);
+				if (!Directory.EnumerateFileSystemEntries(subDirectory).Any())
+				{
+					Directory.Delete(subDirectory);
 				}
-				directoryInfo.Delete(true);
 			}
 		}
 
@@ -579,29 +636,33 @@ namespace FileStorage.Core
 
 		private void RefreshSub(string[] directories)
 		{
-			//foreach (var dir in directories)
+			var logDirectory = GetLogDirectory();
 			Parallel.ForEach(directories, dir =>
 			{
+				// каталог журнала событий не содержит файлов хранилища
+				if ((dir + Path.DirectorySeparatorChar).StartsWith(logDirectory, PathComparison))
+					return;
+
 				var d = Directory.GetDirectories(dir);
 				if (!d.Any())
 				{
 					_fileStorageVirtual.AddDirectory(dir, false);
 					var files = Directory.GetFiles(dir, "*", SearchOption.TopDirectoryOnly);
 					Parallel.ForEach(files, f =>
-					//foreach (var f in files)
 					{
+						if (f.EndsWith(".tmp", PathComparison))
+							return;
 						var fileInfo = new FileInfo(f);
 						AddFile(fileInfo);
-						_fileStorageVirtual.Add(fileInfo.Name);
-					}
-					);
+						// в кеш кладём полный путь — в том же виде, в каком его ищут Exists/Delete
+						_fileStorageVirtual.Add(f);
+					});
 				}
 				else
 				{
 					RefreshSub(d);
 				}
-			}
-			);
+			});
 		}
 
 		private void AddFile(FileInfo fileInfo)

@@ -16,6 +16,26 @@ namespace FileStorage.Contracts
 		FileInfoResponse Write(byte[] buffer, int byteCount, bool close);
 	}
 
+	internal static class BatchStreamHelper
+	{
+		public const int ChunkSize = 11000;
+
+		/// <summary>
+		/// Читает из потока, пока буфер не заполнится или поток не закончится.
+		/// Stream.Read может вернуть меньше запрошенного, даже если данные ещё есть.
+		/// </summary>
+		public static int ReadFull(Stream stream, byte[] buffer)
+		{
+			var total = 0;
+			int read;
+			while (total < buffer.Length && (read = stream.Read(buffer, total, buffer.Length - total)) > 0)
+			{
+				total += read;
+			}
+			return total;
+		}
+	}
+
 	public sealed class FileStorageBatchPersist : IDisposable, IFileStorageBatchPersist
 	{
 		private readonly IWcfFileStorageService _service;
@@ -56,21 +76,25 @@ namespace FileStorage.Contracts
 
 		public string Write(Stream stream)
 		{
-
-			var length = 11000;
-			var offset = 0;
-
-			var byteCount = 0;
-			var buffer = new byte[length];
-			while ((byteCount = stream.Read(buffer, 0, buffer.Length)) > 0)
+			// Блок отправляется только после чтения следующего: так заранее известно, какой блок последний,
+			// и не нужен stream.Length (его нет у сетевых потоков). Раньше файл размером, кратным 11000 байт,
+			// никогда не закрывался, а неполное чтение посреди потока закрывало его раньше времени.
+			var buffer = new byte[BatchStreamHelper.ChunkSize];
+			var next = new byte[BatchStreamHelper.ChunkSize];
+			var byteCount = BatchStreamHelper.ReadFull(stream, buffer);
+			do
 			{
-				bool close = length > byteCount || offset + byteCount > stream.Length;
-				var data = Write(buffer, byteCount, close);
+				var nextCount = byteCount > 0 ? BatchStreamHelper.ReadFull(stream, next) : 0;
+				var data = Write(buffer, byteCount, nextCount == 0);
 				_isOpen = true;
-
 				_id = data.Id;
-				offset += length;
+
+				var tmp = buffer;
+				buffer = next;
+				next = tmp;
+				byteCount = nextCount;
 			}
+			while (byteCount > 0);
 			return _id;
 		}
 
@@ -144,22 +168,26 @@ namespace FileStorage.Contracts
 
 		public string Write(Stream stream)
 		{
-			var length = 11000;
-			var offset = 0;
-
-			var byteCount = 0;
-			var buffer = new byte[length];
-			while ((byteCount = stream.Read(buffer, 0, buffer.Length)) > 0)
+			// Блок отправляется только после чтения следующего: так заранее известно, какой блок последний,
+			// и не нужен stream.Length (его нет у сетевых потоков). Раньше файл размером, кратным 11000 байт,
+			// никогда не закрывался, а неполное чтение посреди потока закрывало его раньше времени.
+			var buffer = new byte[BatchStreamHelper.ChunkSize];
+			var next = new byte[BatchStreamHelper.ChunkSize];
+			var byteCount = BatchStreamHelper.ReadFull(stream, buffer);
+			do
 			{
-				var l = stream.Length;
-				bool close = length > byteCount || offset + byteCount > l;
-				var data = Write(buffer, byteCount, close);
+				var nextCount = byteCount > 0 ? BatchStreamHelper.ReadFull(stream, next) : 0;
+				var data = Write(buffer, byteCount, nextCount == 0);
 				_isOpen = true;
 				_id = data.Id;
-				offset += length;
-			}
-			return _id;
 
+				var tmp = buffer;
+				buffer = next;
+				next = tmp;
+				byteCount = nextCount;
+			}
+			while (byteCount > 0);
+			return _id;
 		}
 
 		public string Write(string value)

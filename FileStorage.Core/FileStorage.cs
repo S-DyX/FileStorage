@@ -26,6 +26,11 @@ namespace FileStorage.Core
 		private readonly ILocalLogger _localLogger;
 		private IFileStorageLog _log;
 		private readonly string _rootDirectory;
+		// Глубина дерева каталогов этого хранилища. Хранится отдельно от общих настроек,
+		// чтобы ChangeDepthDirectory не влиял на другие хранилища с теми же настройками.
+		private int _depth;
+		private static readonly StringComparison PathComparison =
+			OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 		/// <summary>
 		/// Ctor
 		/// </summary>
@@ -41,6 +46,7 @@ namespace FileStorage.Core
 			_fileStorageVirtual = fileStorageVirtual;
 			_localLogger = localLogger;
 			_rootDirectory = GetRoot(_settings, name);
+			_depth = _settings.Depth;
 			_log = new FileStorageLog(_rootDirectory);
 			//Task.Factory.StartNew(() => _fileStorageVirtual.GetCount(_rootDirectory));
 		}
@@ -154,21 +160,23 @@ namespace FileStorage.Core
 		/// <param name="date"></param>
 		public void ClearTtl(DateTime date)
 		{
-
-			Console.WriteLine("Start:");
+			_localLogger?.Info($"TTL Start:{date}");
 			var files = _log.GetAll().OrderBy(x => x.Time).ToList();
 			var save = new List<EventMessage>();
 			foreach (var file in files)
 			{
 				if (file.Time > date)
 				{
-					//lock (save)
-					{
-
-						save.Add(file);
-					}
+					// свежие записи оставляем и в журнале, и на диске
+					save.Add(file);
+					continue;
 				}
-				Console.WriteLine("TTL:" + file.Id);
+
+				// события удаления повторно не обрабатываем
+				if (file.Type == EventType.FileDelete || file.Type == EventType.FileMoveDelete || file.Type == EventType.Unknown)
+					continue;
+
+				_localLogger?.Info("TTL:" + file.Id);
 				Delete(file.Id);
 			}
 			_log.Rewrite(save, DateTime.UtcNow);
@@ -308,13 +316,18 @@ namespace FileStorage.Core
 		public bool DeleteTemp(string id)
 		{
 			var fileName = GetFullFileName(id);
-			var fileNameTmp = GetTempFileName(id);
-			if (_fileStorageVirtual.Exists(fileNameTmp))
+			var directory = Path.GetDirectoryName(fileName);
+			if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+				return false;
+
+			// Временные файлы пишутся как "<файл>_<sessionId>.tmp" (см. SaveToFile).
+			// sessionId сюда не передаётся, поэтому удаляем временные файлы всех сессий этого id.
+			var tempFiles = Directory.GetFiles(directory, Path.GetFileName(fileName) + "_*.tmp", SearchOption.TopDirectoryOnly);
+			foreach (var tempFile in tempFiles)
 			{
-				_fileStorageVirtual.Delete(fileNameTmp);
-				return true;
+				_fileStorageVirtual.Delete(tempFile);
 			}
-			return false;
+			return tempFiles.Length > 0;
 		}
 
 		/// <summary>
@@ -330,7 +343,7 @@ namespace FileStorage.Core
 
 		private string GetDirectory(string id)
 		{
-			var depth = _settings.Depth;
+			var depth = _depth;
 
 			return GetDirectory(id, depth);
 		}
@@ -386,24 +399,59 @@ namespace FileStorage.Core
 		/// <param name="newDepth"></param>
 		public void ChangeDepthDirectory(int oldDepth, int newDepth)
 		{
-			var directories = Directory.GetDirectories(_rootDirectory, "*", SearchOption.TopDirectoryOnly);
-			foreach (var diretory in directories)
+			// oldDepth не используется: новое расположение вычисляется по имени файла (id),
+			// поэтому перенос корректен при любой текущей структуре и его можно безопасно повторить.
+			if (newDepth < 0)
+				throw new ArgumentOutOfRangeException(nameof(newDepth));
+			if (!Directory.Exists(_rootDirectory))
 			{
-				var directoryInfo = new DirectoryInfo(diretory);
-				if (directoryInfo.Name.Length > newDepth)
+				_depth = newDepth;
+				return;
+			}
+
+			var logDirectory = GetLogDirectory();
+			var files = Directory.GetFiles(_rootDirectory, "*", SearchOption.AllDirectories)
+				.Where(f => !f.StartsWith(logDirectory, PathComparison) && !f.EndsWith(".tmp", PathComparison))
+				.ToList();
+
+			// Сначала вычисляем все новые пути: если для какого-то id путь построить нельзя,
+			// исключение возникнет до того, как будет перенесён хотя бы один файл.
+			var moves = new List<KeyValuePair<string, string>>(files.Count);
+			foreach (var file in files)
+			{
+				var id = Path.GetFileName(file);
+				var newDirectoryName = GetDirectory(id, newDepth);
+				var destFileName = newDirectoryName + Path.DirectorySeparatorChar + id;
+				if (!string.Equals(file, destFileName, PathComparison))
+					moves.Add(new KeyValuePair<string, string>(file, destFileName));
+			}
+
+			foreach (var move in moves)
+			{
+				_fileStorageVirtual.AddDirectory(Path.GetDirectoryName(move.Value), true);
+				_fileStorageVirtual.Move(move.Key, move.Value);
+			}
+
+			_depth = newDepth;
+			DeleteEmptyDirectories(_rootDirectory, logDirectory);
+		}
+
+		private string GetLogDirectory()
+		{
+			return Path.Combine(_rootDirectory, "Log") + Path.DirectorySeparatorChar;
+		}
+
+		private static void DeleteEmptyDirectories(string directory, string logDirectory)
+		{
+			foreach (var subDirectory in Directory.GetDirectories(directory))
+			{
+				if ((subDirectory + Path.DirectorySeparatorChar).StartsWith(logDirectory, PathComparison))
+					continue;
+				DeleteEmptyDirectories(subDirectory, logDirectory);
+				if (!Directory.EnumerateFileSystemEntries(subDirectory).Any())
 				{
-					var files = directoryInfo.GetFiles();
-					foreach (var file in files)
-					{
-						var newDirectoryName = GetDirectory(file.Name, newDepth);
-						_fileStorageVirtual.AddDirectory(newDirectoryName, true);
-						var destFileName = Path.Combine(newDirectoryName, file.Name);
-						_fileStorageVirtual.Move(file.FullName, destFileName);
-
-					}
-
+					Directory.Delete(subDirectory);
 				}
-				directoryInfo.Delete(true);
 			}
 		}
 
@@ -503,29 +551,33 @@ namespace FileStorage.Core
 
 		private void RefreshSub(string[] directories)
 		{
-			//foreach (var dir in directories)
+			var logDirectory = GetLogDirectory();
 			Parallel.ForEach(directories, dir =>
 			{
+				// каталог журнала событий не содержит файлов хранилища
+				if ((dir + Path.DirectorySeparatorChar).StartsWith(logDirectory, PathComparison))
+					return;
+
 				var d = Directory.GetDirectories(dir);
 				if (!d.Any())
 				{
 					_fileStorageVirtual.AddDirectory(dir, false);
 					var files = Directory.GetFiles(dir, "*", SearchOption.TopDirectoryOnly);
 					Parallel.ForEach(files, f =>
-					//foreach (var f in files)
 					{
+						if (f.EndsWith(".tmp", PathComparison))
+							return;
 						var fileInfo = new FileInfo(f);
 						AddFile(fileInfo);
-						_fileStorageVirtual.Add(fileInfo.Name);
-					}
-					);
+						// в кеш кладём полный путь — в том же виде, в каком его ищут Exists/Delete
+						_fileStorageVirtual.Add(f);
+					});
 				}
 				else
 				{
 					RefreshSub(d);
 				}
-			}
-			);
+			});
 		}
 
 		private void AddFile(FileInfo fileInfo)
@@ -659,22 +711,16 @@ namespace FileStorage.Core
 
 		public string GetHash(Stream stream)
 		{
-			var hash = string.Empty;
-			using (var output = new MemoryStream())
+			var startPosition = stream.CanSeek ? stream.Position : 0;
+			string hash;
+			using (var sha1 = SHA1.Create())
 			{
-				using (var sha1 = SHA1.Create())
-				{
-					using (var crypto = new CryptoStream(output, sha1, CryptoStreamMode.Write))
-					{
-						stream.CopyTo(crypto);
-						crypto.FlushFinalBlock();
-						hash = sha1.Hash.GetHashString();
-					}
-				}
+				// хеш считается потоково, без копирования файла в память
+				hash = sha1.ComputeHash(stream).GetHashString();
 			}
-			if (stream.CanRead)
+			if (stream.CanSeek)
 			{
-				stream.Position = 0;
+				stream.Position = startPosition;
 			}
 			return hash;
 		}
@@ -685,8 +731,23 @@ namespace FileStorage.Core
 		/// <returns></returns>
 		public FileToken SaveAsHash(Stream input)
 		{
-			var id = GetHash(input);
-			return SaveStream(input, id);
+			if (input.CanSeek)
+			{
+				var id = GetHash(input);
+				return SaveStream(input, id);
+			}
+
+			// Поток без перемотки (например, тело HTTP-запроса) нельзя прочитать дважды:
+			// сначала сохраняем его во временный файл, который удалится при закрытии.
+			Directory.CreateDirectory(_rootDirectory);
+			var tempFileName = Path.Combine(_rootDirectory, Guid.NewGuid() + ".tmp");
+			using (var buffer = new FileStream(tempFileName, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 81920, FileOptions.DeleteOnClose))
+			{
+				input.CopyTo(buffer);
+				buffer.Position = 0;
+				var id = GetHash(buffer);
+				return SaveStream(buffer, id);
+			}
 		}
 
 		/// <summary>

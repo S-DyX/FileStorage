@@ -128,7 +128,7 @@ namespace FileStorage.Core.Interfaces
 				Time = dateTime,
 				Id = fileId,
 				FolderId = folderId,
-				Type = EventType.FileSave,
+				Type = type,
 				Size = size
 			});
 		}
@@ -137,29 +137,35 @@ namespace FileStorage.Core.Interfaces
 			var rootLogDir = GetRootLogDir();
 			lock (_syncSave)
 			{
-
-				var files = Directory.GetFiles(rootLogDir, "*.log", SearchOption.AllDirectories);
+				var files = Directory.Exists(rootLogDir)
+					? Directory.GetFiles(rootLogDir, "*.log", SearchOption.AllDirectories)
+					: Array.Empty<string>();
 				foreach (var file in files)
 				{
 					File.Move(file, $"{file}_{Guid.NewGuid()}.old");
 				}
-				if (eventMessages.Any())
-					Save(eventMessages, DateTime.UtcNow);
+
+				// События, ещё не сброшенные на диск (например, удаления из ClearTtl), сохраняем в новый журнал.
+				var toSave = eventMessages.Concat(_newEvents).Distinct().ToList();
+				_newEvents.Clear();
+
+				// Сбрасываем состояние: иначе новый файл с тем же именем не загрузится (он уже есть в _files),
+				// а в памяти останутся записи об удалённых файлах.
+				_files.Clear();
+				_scope = new EventMessageScope();
+
+				if (toSave.Any())
+					Save(toSave, DateTime.UtcNow);
 				Reinit();
-
 			}
-
-
 		}
 		public void Write(EventMessage eventMessage)
 		{
-
 			lock (_syncSave)
 			{
 				_newEvents.Add(eventMessage);
+				_scope.Add(eventMessage);
 			}
-
-			_scope.Add(eventMessage);
 		}
 
 		public void Flush()
@@ -176,31 +182,26 @@ namespace FileStorage.Core.Interfaces
 
 		private void Check()
 		{
-			foreach (var file in _files)
+			// _files и счётчики строк меняются также в Refresh/Rewrite, поэтому работаем под той же блокировкой
+			lock (_syncSave)
 			{
-				var fileInfo = new FileInfo(file.FileName);
-				if (fileInfo.Exists && fileInfo.LastWriteTimeUtc > file.LastWriteTimeUtc)
+				var events = new List<EventMessage>();
+				foreach (var file in _files)
 				{
-					var events = LoadFromFile(file);
-
-					if (events.Any())
+					var fileInfo = new FileInfo(file.FileName);
+					if (fileInfo.Exists && fileInfo.LastWriteTimeUtc > file.LastWriteTimeUtc)
 					{
-						lock (_sync)
-						{
-							if (events.Any())
-							{
-								_scope.AddRange(events);
-							}
-						}
+						file.LastWriteTimeUtc = fileInfo.LastWriteTimeUtc;
+						events.AddRange(LoadFromFile(file));
 					}
 				}
+
+				if (events.Any())
+				{
+					_scope.AddRange(events);
+				}
 			}
-
 		}
-
-
-
-
 
 		private void Save(List<EventMessage> items, DateTime date)
 		{
@@ -375,8 +376,11 @@ namespace FileStorage.Core.Interfaces
 		}
 		public void Clear()
 		{
-			_newEvents.Clear();
-			_files.Clear();
+			lock (_syncSave)
+			{
+				_newEvents.Clear();
+				_files.Clear();
+			}
 		}
 
 		public bool IsExists(string id)
@@ -399,18 +403,11 @@ namespace FileStorage.Core.Interfaces
 		{
 			if ((_scope._minTime > time || time > _scope._maxTime) && time <= DateTime.UtcNow)
 			{
-				List<EventMessage> events = new List<EventMessage>();
 				lock (_syncSave)
 				{
 					if ((_scope._minTime > time || time > _scope._maxTime) && time <= DateTime.UtcNow)
 					{
-						events = LoadFromFile(time);
-					}
-				}
-				if (events.Any())
-				{
-					lock (_sync)
-					{
+						var events = LoadFromFile(time);
 						if (events.Any())
 						{
 							_scope.AddRange(events);

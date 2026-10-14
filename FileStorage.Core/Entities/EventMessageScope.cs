@@ -7,63 +7,77 @@ using FileStorage.Core.Interfaces;
 
 namespace FileStorage.Core.Entities
 {
+	/// <summary>
+	/// Журнал событий в памяти, сгруппированный по месяцам.
+	/// Все обращения к словарям идут под одной блокировкой: класс используется из нескольких потоков
+	/// (запись событий, таймеры Flush/Check, параллельный ClearTtl, чтение журнала).
+	/// </summary>
 	public sealed class EventMessageScope
 	{
-		public DateTime _minTime { get; protected set; }
-		public DateTime _maxTime { get; protected set; }
-
-
-		public EventMessageScope()
-		{
-			_minTime = DateTime.MaxValue;
-			_maxTime = DateTime.MinValue;
-			_group = new Dictionary<DateTime, EventMessageGroup>();
-		}
+		private readonly object _sync = new object();
 
 		private readonly Dictionary<DateTime, EventMessageGroup> _group;
 
+		private DateTime _min;
+
+		private DateTime _max;
+
 		private EventMessage _last;
 
-		private readonly object _sync = new object();
+		public DateTime _minTime
+		{
+			get { lock (_sync) { return _min; } }
+		}
+
+		public DateTime _maxTime
+		{
+			get { lock (_sync) { return _max; } }
+		}
+
+		public EventMessageScope()
+		{
+			_min = DateTime.MaxValue;
+			_max = DateTime.MinValue;
+			_group = new Dictionary<DateTime, EventMessageGroup>();
+		}
 
 		public void SetMinMax(DateTime dateTime)
 		{
+			lock (_sync)
+			{
+				SetMinMaxInternal(dateTime);
+			}
+		}
+
+		private void SetMinMaxInternal(DateTime dateTime)
+		{
 			if (dateTime > DateTime.UtcNow)
 				return;
-			if (_minTime > dateTime)
-				_minTime = dateTime;
-			if (_maxTime < dateTime)
-				_maxTime = dateTime;
+			if (_min > dateTime)
+				_min = dateTime;
+			if (_max < dateTime)
+				_max = dateTime;
+		}
+
+		private EventMessageGroup GetOrCreateGroup(DateTime dateTime, int capacity)
+		{
+			EventMessageGroup eventMessageGroup;
+			if (!_group.TryGetValue(dateTime, out eventMessageGroup))
+			{
+				eventMessageGroup = new EventMessageGroup(dateTime, capacity);
+				_group.Add(dateTime, eventMessageGroup);
+			}
+			return eventMessageGroup;
 		}
 
 		public void Add(EventMessage message)
 		{
-			SetMinMax(message.Time);
-			var dateTime = GetDateTime(message.Time);
-
-			EventMessageGroup eventMessageGroup;
-			if (!_group.ContainsKey(dateTime))
+			lock (_sync)
 			{
-				lock (_sync)
-				{
-					if (!_group.ContainsKey(dateTime))
-					{
-						eventMessageGroup = new EventMessageGroup(dateTime);
-						_group.Add(dateTime, eventMessageGroup);
-
-					}
-					else
-					{
-						eventMessageGroup = _group[dateTime];
-					}
-				}
+				SetMinMaxInternal(message.Time);
+				GetOrCreateGroup(GetDateTime(message.Time), 100).Add(message);
+				_last = message;
 			}
-			else
-			{
-				eventMessageGroup = _group[dateTime];
-			}
-			eventMessageGroup.Add(message);
-			_last = message;
 		}
 
 		private static DateTime GetDateTime(DateTime time)
@@ -73,81 +87,78 @@ namespace FileStorage.Core.Entities
 
 		public void AddRange(IEnumerable<EventMessage> messages)
 		{
-			var group =  messages.GroupBy(x => GetDateTime(x.Time)).ToList();
-			foreach (var g in group)
-			{  
-				var dateTime = g.Key;
-				var count = g.Count();
-				foreach (var message in g)
+			var groups = messages.GroupBy(x => GetDateTime(x.Time)).ToList();
+			lock (_sync)
+			{
+				foreach (var g in groups)
 				{
-					SetMinMax(message.Time); 
-					EventMessageGroup eventMessageGroup;
-					if (!_group.ContainsKey(dateTime))
+					var eventMessageGroup = GetOrCreateGroup(g.Key, g.Count());
+					foreach (var message in g)
 					{
-						lock (_sync)
-						{
-							if (!_group.ContainsKey(dateTime))
-							{
-								eventMessageGroup = new EventMessageGroup(dateTime, count);
-								_group.Add(dateTime, eventMessageGroup);
-
-							}
-							else
-							{
-								eventMessageGroup = _group[dateTime];
-							}
-						}
+						SetMinMaxInternal(message.Time);
+						eventMessageGroup.Add(message);
+						_last = message;
 					}
-					else
-					{
-						eventMessageGroup = _group[dateTime];
-					}
-					eventMessageGroup.Add(message);
-					_last = message;
 				}
-				
-				
 			}
-			
 		}
 
 		public List<EventMessage> GetByDate(DateTime time, int take)
 		{
 			var date = GetDateTime(time);
-			var eventMessages = _group.Where(x => x.Key >= date).SelectMany(s => s.Value).Where(v => v.Time >= time).ToList();
-			return eventMessages.OrderBy(x => x.Time).Take(take).ToList();
+			lock (_sync)
+			{
+				return _group.Where(x => x.Key >= date)
+					.SelectMany(s => s.Value)
+					.Where(v => v.Time >= time)
+					.OrderBy(x => x.Time)
+					.Take(take)
+					.ToList();
+			}
 		}
 
 		public List<EventMessage> GetToDate(DateTime time)
 		{
 			var date = GetDateTime(time);
-			return _group.Where(x => x.Key <= date)
-				.SelectMany(s => s.Value)
-				.Where(v => v.Time < time).ToList();
-			
+			lock (_sync)
+			{
+				return _group.Where(x => x.Key <= date)
+					.SelectMany(s => s.Value)
+					.Where(v => v.Time < time).ToList();
+			}
 		}
-		public List<EventMessage> GetAll()
-		{ 
-			return _group
-				.SelectMany(s => s.Value)
-				.ToList();
 
+		public List<EventMessage> GetAll()
+		{
+			lock (_sync)
+			{
+				return _group
+					.SelectMany(s => s.Value)
+					.ToList();
+			}
 		}
+
 		public List<EventMessage> GetByDate(string id)
 		{
 			var result = new List<EventMessage>();
-			foreach (var group in _group.Values)
+			lock (_sync)
 			{
-				var eventM = group.GetById(id);
-				if (eventM != null)
-					result.Add(eventM);
+				foreach (var group in _group.Values)
+				{
+					var eventM = group.GetById(id);
+					if (eventM != null)
+						result.Add(eventM);
+				}
 			}
 			return result;
 		}
 
 		public EventMessage GetLast()
 		{
-			return _last;
+			lock (_sync)
+			{
+				return _last;
+			}
 		}
 	}
 
@@ -166,12 +177,7 @@ namespace FileStorage.Core.Entities
 		{
 			lock (_sync)
 			{
-				if (!_eventsDictionary.ContainsKey(eventMessage.Id))
-					_eventsDictionary.Add(eventMessage.Id, eventMessage);
-				else
-				{
-					_eventsDictionary[eventMessage.Id] = eventMessage;
-				}
+				_eventsDictionary[eventMessage.Id] = eventMessage;
 			}
 		}
 
@@ -185,18 +191,22 @@ namespace FileStorage.Core.Entities
 
 		public EventMessage GetById(string id)
 		{
-			if (_eventsDictionary.ContainsKey(id))
+			lock (_sync)
 			{
-				return _eventsDictionary[id];
+				EventMessage eventMessage;
+				return _eventsDictionary.TryGetValue(id, out eventMessage) ? eventMessage : null;
 			}
-			return null;
 		}
 
 		private readonly Dictionary<string, EventMessage> _eventsDictionary;
 
 		public IEnumerator<EventMessage> GetEnumerator()
 		{
-			return _eventsDictionary.Values.GetEnumerator();
+			// перебираем снимок, чтобы параллельный Add не ломал перечисление
+			lock (_sync)
+			{
+				return _eventsDictionary.Values.ToList().GetEnumerator();
+			}
 		}
 
 		IEnumerator IEnumerable.GetEnumerator()
