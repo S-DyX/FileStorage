@@ -4,6 +4,48 @@
         <name>FileStorage.Core</name>
     </assembly>
     <members>
+        <member name="M:FileStorage.Contracts.BatchStreamHelper.ReadFull(System.IO.Stream,System.Byte[])">
+            <summary>
+            Читает из потока, пока буфер не заполнится или поток не закончится.
+            Stream.Read может вернуть меньше запрошенного, даже если данные ещё есть.
+            </summary>
+        </member>
+        <member name="T:FileStorage.Contracts.IFileStorageService">
+            <summary>
+            File storage service
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.IFileStorageService.GetStream(System.String,System.String)">
+            <summary>
+            Return stream from storage by Id
+            </summary>
+            <param name="id"></param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="T:FileStorage.Core.Entities.EventMessageScope">
+            <summary>
+            Журнал событий в памяти, сгруппированный по месяцам.
+            Все обращения к словарю месяцев идут под одной блокировкой: класс используется из нескольких потоков
+            (запись событий, таймеры Flush/Check, параллельный ClearTtl, чтение журнала).
+            </summary>
+        </member>
+        <member name="T:FileStorage.Core.Entities.EventMessageGroup">
+            <summary>
+            События одного месяца. Хранится последнее событие по каждой паре «папка + id файла»:
+            при переносе между папками удаление из старой папки и сохранение в новой не перекрывают друг друга.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Entities.EventMessageGroup.GetById(System.String)">
+            <summary>
+            Последнее по времени событие файла в любой папке
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Entities.EventMessageGroup.CopySortedFrom(System.DateTime,System.Int32,System.Collections.Generic.List{FileStorage.Core.Entities.EventMessage})">
+            <summary>
+            Добавляет в result не больше count событий с Time >= time в порядке времени
+            </summary>
+        </member>
         <member name="T:FileStorage.Core.FileContainer">
             <summary>
             contains file details 
@@ -120,6 +162,23 @@
             <param name="oldDepth"></param>
             <param name="newDepth"></param>
         </member>
+        <member name="M:FileStorage.Core.FileStorage.LoadDepth">
+            <summary>
+            Глубина дерева этого хранилища. После ChangeDepthDirectory она сохраняется в каталоге хранилища,
+            чтобы после перезапуска файлы искались по фактической схеме, а не по TreeDepth из настроек.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.IsServiceFile(System.String)">
+            <summary>
+            Служебные файлы в каталоге хранилища: журнал, временные файлы, файл глубины дерева
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.DeleteExpiredFiles(System.DateTime,System.Collections.Generic.List{FileStorage.Core.Entities.EventMessage})">
+            <summary>
+            Удаляет с диска файлы старше date, о которых нет свежих записей в журнале (например, записанные
+            до появления журнала), а также временные файлы и архивы журнала старше date.
+            </summary>
+        </member>
         <member name="M:FileStorage.Core.FileStorage.GetCount">
             <summary>
             <see cref="M:FileStorage.Core.IFileStorage`1.GetCount"/>
@@ -210,12 +269,23 @@
             <see cref="M:FileStorage.Core.IFileStorage`1.DeleteAll"/>
             </summary>
         </member>
+        <member name="M:FileStorage.Core.FileStorage.ResetStorage">
+            <summary>
+            Полностью очищает хранилище: убирает его файлы из кеша, останавливает журнал,
+            удаляет каталог вместе с содержимым и создаёт пустой журнал.
+            </summary>
+        </member>
         <member name="M:FileStorage.Core.FileStorage.GetRelativeFileName(System.String)">
             <summary>
              <see cref="!:IFileStorage&lt;TValue&gt;.GetRelativeFileName(string)"/>
             </summary>
             <param name="id"></param>
             <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.Dispose">
+            <summary>
+            Останавливает таймеры журнала и сохраняет ещё не записанные события
+            </summary>
         </member>
         <member name="T:FileStorage.Core.FileStorageSettings">
             <summary>
@@ -336,6 +406,30 @@
             <param name="oldDepth"></param>
             <param name="newDepth"></param>
         </member>
+        <member name="M:FileStorage.Core.FolderStorage.LoadDepth">
+            <summary>
+            Глубина дерева этого хранилища. После ChangeDepthDirectory она сохраняется в каталоге хранилища,
+            чтобы после перезапуска файлы искались по фактической схеме, а не по TreeDepth из настроек.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.IsServiceFile(System.String)">
+            <summary>
+            Служебные файлы в каталоге хранилища: журнал, временные файлы, файл глубины дерева
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.GetFolderIdFromPath(System.String)">
+            <summary>
+            FolderId по пути файла. При глубине больше 1 путь — это символы FolderId по уровням плюс остаток,
+            поэтому FolderId восстанавливается склейкой каталогов. При глубине 0–1 он хранится в пути не полностью,
+            а у файлов в корне его нет — тогда возвращается null.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.DeleteExpiredFiles(System.DateTime,System.Collections.Generic.List{FileStorage.Core.Entities.EventMessage})">
+            <summary>
+            Удаляет с диска файлы старше date, о которых нет свежих записей в журнале (например, записанные
+            до появления журнала), а также временные файлы и архивы журнала старше date.
+            </summary>
+        </member>
         <member name="M:FileStorage.Core.FolderStorage.GetCount">
             <summary>
             <see cref="M:FileStorage.Core.IFileStorage`1.GetCount"/>
@@ -419,12 +513,33 @@
             <see cref="M:FileStorage.Core.IFolderStorage.DeleteAll"/>
             </summary>
         </member>
+        <member name="M:FileStorage.Core.FolderStorage.ResetStorage">
+            <summary>
+            Полностью очищает хранилище: убирает его файлы из кеша, останавливает журнал,
+            удаляет каталог вместе с содержимым и создаёт пустой журнал.
+            </summary>
+        </member>
         <member name="M:FileStorage.Core.FolderStorage.GetRelativeFileName(FileStorage.Core.FolderStorageInfo)">
             <summary>
              <see cref="!:IFolderStorage.GetRelativeFileName(string)"/>
             </summary>
             <param name="id"></param>
             <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.Dispose">
+            <summary>
+            Останавливает таймеры журнала и сохраняет ещё не записанные события
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.StreamHelper.FilesAreEqual(System.String,System.String)">
+            <summary>
+            Побайтно сравнивает содержимое двух файлов
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.StreamHelper.ReadFull(System.IO.Stream,System.Byte[])">
+            <summary>
+            Читает из потока, пока буфер не заполнится или поток не закончится
+            </summary>
         </member>
         <member name="T:FileStorage.Core.IFileStorage`1">
             <summary>
@@ -472,6 +587,16 @@
             Get stream by id
             </summary>
             <param name="id"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorage`1.GetStream(System.String,System.IO.FileMode,System.IO.FileAccess,System.IO.FileShare)">
+            <summary>
+            Get stream by id
+            </summary>
+            <param name="id"></param>
+            <param name="mode"></param>
+            <param name="access"></param>
+            <param name="share"></param>
             <returns></returns>
         </member>
         <member name="M:FileStorage.Core.IFileStorage`1.Delete(`0)">
@@ -635,10 +760,21 @@
             <param name="name">file storage name</param>
             <returns><see cref="T:FileStorage.Core.IFileStorage`1"/></returns>
         </member>
+        <member name="M:FileStorage.Core.FileStorageFactory.Dispose">
+            <summary>
+            Останавливает журналы всех созданных хранилищ (таймеры, несохранённые события)
+            </summary>
+        </member>
         <member name="T:FileStorage.Core.IFileStorageVirtual">
             <summary>
             Virtual file storage directory,reduces the number of disk accesses
             </summary>
+        </member>
+        <member name="M:FileStorage.Core.IFileStorageVirtual.Release(System.String)">
+            <summary>
+            if file not found
+            </summary>
+            <param name="fileName"></param>
         </member>
         <member name="M:FileStorage.Core.IFileStorageVirtual.Exists(System.String)">
             <summary>
@@ -705,6 +841,18 @@
             Drop files
             </summary>
         </member>
+        <member name="M:FileStorage.Core.IFileStorageVirtual.ReleaseDirectory(System.String)">
+            <summary>
+            Убрать из кеша все файлы и каталоги, путь которых начинается с directory (файлы на диске не трогаются)
+            </summary>
+            <param name="directory"></param>
+        </member>
+        <member name="T:FileStorage.Core.IndexedFileList">
+            <summary>
+            Список файлов с добавлением, проверкой и удалением за O(1).
+            При удалении на место удалённого элемента ставится последний, поэтому порядок элементов не сохраняется.
+            </summary>
+        </member>
         <member name="T:FileStorage.Core.FileStorageVirtual">
             <summary>
             <see cref="T:FileStorage.Core.IFileStorageVirtual"/>
@@ -732,6 +880,12 @@
         <member name="M:FileStorage.Core.FileStorageVirtual.Add(System.String)">
             <summary>
             <see cref="M:FileStorage.Core.IFileStorageVirtual.Add(System.String)"/>
+            </summary>
+            <param name="fileName"></param>
+        </member>
+        <member name="M:FileStorage.Core.FileStorageVirtual.Release(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageVirtual.Release(System.String)"/>
             </summary>
             <param name="fileName"></param>
         </member>
@@ -775,6 +929,12 @@
             <param name="rootDirectory"></param>
             <returns></returns>
         </member>
+        <member name="M:FileStorage.Core.FileStorageVirtual.ReleaseDirectory(System.String)">
+            <summary>
+            <see cref="M:FileStorage.Core.IFileStorageVirtual.ReleaseDirectory(System.String)"/>
+            </summary>
+            <param name="directory"></param>
+        </member>
         <member name="T:FileStorage.Core.IFolderStorage">
             <summary>
             Hierarchical folder storage stored on disk 
@@ -793,6 +953,13 @@
             </summary>
             <param name="stream"></param>
             <param name="info"></param>
+        </member>
+        <member name="M:FileStorage.Core.IFolderStorage.GetStream(FileStorage.Core.FolderStorageInfo)">
+            <summary>
+            Get stream by id
+            </summary>
+            <param name="info"></param>
+            <returns></returns>
         </member>
         <member name="M:FileStorage.Core.IFolderStorage.Append(System.Byte[],FileStorage.Core.FolderStorageInfo)">
             <summary>
@@ -815,7 +982,7 @@
             <param name="id"></param>
             <returns></returns>
         </member>
-        <member name="M:FileStorage.Core.IFolderStorage.GetStream(FileStorage.Core.FolderStorageInfo)">
+        <member name="M:FileStorage.Core.IFolderStorage.GetStream(FileStorage.Core.FolderStorageInfo,System.IO.FileMode,System.IO.FileAccess,System.IO.FileShare)">
             <summary>
             Get stream by id
             </summary>
@@ -960,7 +1127,7 @@
             <see cref="M:FileStorage.Core.IFileStorageFactory`1.Create(System.String)"/>
             </summary>
             <param name="name">file storage name</param>
-            <returns><see cref="T:FileStorage.Core.IFileStorage`1"/></returns>
+            <returns><see cref="T:FileStorage.Core.IFolderStorage"/></returns>
         </member>
         <member name="M:FileStorage.Core.FolderStorageFactory.Get(System.String)">
             <summary>
@@ -968,6 +1135,11 @@
             </summary>
             <param name="name">file storage name</param>
             <returns><see cref="T:FileStorage.Core.IFolderStorage"/></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorageFactory.Dispose">
+            <summary>
+            Останавливает журналы всех созданных хранилищ (таймеры, несохранённые события)
+            </summary>
         </member>
         <member name="T:FileStorage.Core.Interfaces.DefaultWindowsService">
             <summary>
@@ -998,6 +1170,139 @@
         <member name="M:FileStorage.Core.Interfaces.DefaultWindowsService.FileStorage#Core#Interfaces#IWindowsService#Continued">
             <summary>
             Вызывается при продолжении работы сервиса после паузы.
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.Interfaces.ICache`2.Item(`0)">
+            <summary>
+            Get value by key
+            </summary>
+            <param name="key"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.ICache`2.IsExists(`0)">
+            <summary>
+            Is exists
+            </summary>
+            <param name="key"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.ICache`2.TryGetValue(`0,`1@)">
+            <summary>
+            Try get value
+            </summary>
+            <param name="key"></param>
+            <param name="value"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.ICache`2.GetExists(System.Collections.Generic.List{`0})">
+            <summary>
+            Получаем значения по массиву ключений
+            </summary>
+            <param name="keys"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.ICache`2.Update(System.Collections.Generic.List{`1},System.Func{`1,`0})">
+            <summary>
+            Обновляем значения, а так же передаем функцию вычисления ключа по занчению
+            </summary>
+            <param name="values"></param>
+            <param name="func"></param>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.ICache`2.SetValue(`0,`1)">
+            <summary>
+            Устанивливаем значение по ключу
+            </summary>
+            <param name="key"></param>
+            <param name="value"></param>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.ICache`2.Delete(`0)">
+            <summary>
+            Удаляем значение по ключу
+            </summary>
+            <param name="key"></param>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.ICache`2.SetValue(`0,`1,System.Int32)">
+            <summary>
+            Устанавливаем значение по ключу с временем истечения
+            </summary>
+            <param name="key"></param>
+            <param name="value"></param>
+            <param name="seconds"></param>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.ICache`2.Clear">
+            <summary>
+            Clear
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.ICache`2.Count">
+            <summary>
+            Count of elements
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="T:FileStorage.Core.Interfaces.Cache`2">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.Cache`2.#ctor">
+            <summary>
+            Ctor
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.Cache`2.#ctor(System.Int32)">
+            <summary>
+            Ctor
+            </summary>
+            <param name="seconds"></param>
+        </member>
+        <member name="P:FileStorage.Core.Interfaces.Cache`2.Item(`0)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.Cache`2.SetValue(`0,`1)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.Cache`2.Delete(`0)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.Cache`2.SetValue(`0,`1,System.Int32)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.Cache`2.IsExists(`0)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.Cache`2.GetExists(System.Collections.Generic.List{`0})">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.Cache`2.GetExists(System.Collections.Generic.List{`0},System.Collections.Generic.List{`0}@)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.Cache`2.Update(System.Collections.Generic.List{`1},System.Func{`1,`0})">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.Cache`2.Clear">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.Cache`2.Count">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.Cache`2.TryGetValue(`0,`1@)">
+            <inheritdoc />
+        </member>
+        <member name="T:FileStorage.Core.Interfaces.Cache`1">
+            <inheritdoc cref="T:FileStorage.Core.Interfaces.ICache`1"/>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.FileStorageLog.GetLogFiles">
+            <summary>
+            Файлы журнала (Log/yyyyMM/yyyyMM.log) с месяцем, к которому они относятся, по возрастанию месяца
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.FileStorageLog.Dispose">
+            <summary>
+            Останавливает таймеры и сохраняет ещё не записанные события
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.FileStorageLog.Escape(System.String)">
+            <summary>
+            Экранирует символы, которые ломают строку журнала (разделитель ';' и переводы строк)
             </summary>
         </member>
         <member name="T:FileStorage.Core.Interfaces.IWindowsService">

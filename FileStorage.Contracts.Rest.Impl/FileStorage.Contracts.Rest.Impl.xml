@@ -4,6 +4,15 @@
         <name>FileStorage.Contracts.Rest.Impl</name>
     </assembly>
     <members>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.ByteHelper.WriteChunks(System.IO.Stream,System.Int32,System.Action{System.Byte[],System.Boolean})">
+            <summary>
+            Читает поток блоками по chunkSize байт и передаёт каждый блок в write; у последнего блока close = true.
+            Блок отправляется только после чтения следующего, поэтому последний блок известен заранее и не нужен
+            stream.Length. Раньше при размере потока, кратном размеру блока, последний блок уходил без признака
+            закрытия, а неполное чтение посреди потока закрывало файл раньше времени.
+            Пустой поток, как и раньше, ничего не отправляет.
+            </summary>
+        </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.ITcpFileStorageService.IsExists(System.String,System.String)">
             <summary>
             Is exists on FS
@@ -24,20 +33,11 @@
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.ITcpFileStorageService.Write(System.String,System.String,System.IO.Stream,System.String)">
             <summary>
             Save stream to FS
-            </summary>
-            <param name="externalFolderId">this is folder id from your system</param>
+            </summary> 
             <param name="externalFileId">this is file id from your system</param> 
             <param name="storageName"></param>
             <param name="stream"></param>
             <param name="sessionId"></param>
-        </member>
-        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.ITcpFileStorageService.Read(System.String,System.String,System.IO.Stream)">
-            <summary>
-            Load data from FS to Stream
-            </summary>
-            <param name="externalFileId">this is file id from your system</param> 
-            <param name="storageName"></param>
-            <param name="stream"></param>
         </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.ITcpFileStorageService.Read(System.String,System.Int64,System.Int64,System.String)">
             <summary>
@@ -49,18 +49,18 @@
             <param name="storageName"></param>
             <returns></returns>
         </member>
-        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.ITcpFileStorageService.GetStream(System.String,System.String)">
-            <summary>
-            Return memory stream
-            </summary> 
-            <param name="externalFileId">this is file id from your system</param> 
-            <param name="name"></param>
-            <returns></returns>
-        </member>
         <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService">
             <summary>
             The interface for working with filestorage at REST
             </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.GetStream(System.String,System.String)">
+            <summary>
+            Method return read only stream
+            </summary>
+            <param name="externalFileId">this is file id from your system</param> 
+            <param name="storageName">Storage name</param>
+            <returns></returns>
         </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.GetIdByExternal(System.String)">
             <summary>
@@ -130,7 +130,7 @@
             <summary>
             Is exists by externalId
             </summary>
-            <param name="externalId">id from your system</param>
+            <param name="externalFileId">id from your system</param>
             <param name="storageName"></param>
             <returns></returns>
         </member>
@@ -152,6 +152,14 @@
             <param name="storageName"></param>
             <returns></returns>
         </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.DeleteByExternalId(System.String,System.String)">
+            <summary>
+            Delete file from FS by id from your system
+            </summary>
+            <param name="externalFileId">this is file id from your system</param>
+            <param name="storageName"></param>
+            <returns>true, if the file existed and was deleted</returns>
+        </member>
         <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService">
             <summary>
             Impl <see cref="T:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService"/>
@@ -170,11 +178,19 @@
             <param name="settings"><see cref="T:Service.Registry.Common.Entities.RestClientResponseSettings"/></param>
             <param name="client"><see cref="T:System.Net.Http.IHttpClientFactory"/></param>
         </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.GetStream(System.String,System.String)">
+            <summary>
+            Method return read only stream
+            </summary>
+            <param name="externalFileId">this is file id from your system</param> 
+            <param name="storageName">Storage name</param>
+            <returns></returns>
+        </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.SaveBytes(System.String,System.Byte[],System.String,System.String)">
             <summary>
             <see cref="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.SaveBytes(System.String,System.Byte[],System.String,System.String)"/>
-            </summary>
-            <param name="id"></param>
+            /// </summary>
+            <param name="fileId">internal FS id</param>
             <param name="bytes"></param>
             <param name="storageName"></param>
             <param name="sessionId"></param>
@@ -183,20 +199,103 @@
             <summary>
             <see cref="!:IFileStorageRestService.Write(string, byte[], string, bool, string)"/>
             </summary>
-            <param name="id"></param>
+            <param name="fileId">internal FS id</param>
             <param name="bytes"></param>
             <param name="storageName"></param>
             <param name="close"></param>
             <param name="sessionId"></param>
         </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.GetExistIdByExternal(System.String,System.String)">
+            <summary>
+            Return exist id in FS by externalId
+            </summary>
+            <param name="externalId">id from your system</param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.GetSize(System.String,System.String)">
+            <summary>
+            Return file size
+            </summary>
+            <param name="fileId">internal FS id</param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.Exists(System.String,System.String)">
+            <summary>
+            Is exists on FS
+            </summary>
+            <param name="fileId">internal FS id</param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.IsExistsByExternalId(System.String,System.String)">
+            <summary>
+            Is exists by externalId
+            </summary>
+            <param name="externalId">id from your system</param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.SaveBytes(System.String,System.String,System.IO.Stream,System.String)">
             <summary>
             <see cref="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.SaveBytes(System.String,System.String,System.IO.Stream,System.String)"/>
             </summary>
-            <param name="id">FS internal id </param>
+            <param name="fileId">FS internal id </param>
             <param name="storageName"></param>
             <param name="stream"></param>
             <param name="sessionId"></param>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.WriteToStream(System.String,System.String,System.IO.Stream)">
+            <summary>
+            Load data from FS to Stream
+            </summary>
+            <param name="fileId">internal FS id</param>
+            <param name="storageName"></param>
+            <param name="stream"></param>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.GetBytes(System.String,System.Int64,System.Int64,System.String)">
+            <summary>
+            Partial read 
+            </summary>
+            <param name="fileId">internal FS id</param>
+            <param name="offset"></param>
+            <param name="size"></param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.Delete(System.String,System.String)">
+            <summary>
+            Delete file from FS
+            </summary>
+            <param name="fileId">internal FS id</param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.DeleteByExternalId(System.String,System.String)">
+            <summary>
+            <see cref="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.DeleteByExternalId(System.String,System.String)"/>
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.GetStorageNames">
+            <summary>
+            Names of the storages created on the server
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.OpenRead(System.String,System.String)">
+            <summary>
+            Opens the file for sequential reading directly from the HTTP response, without base64 and chunks
+            (unlike <see cref="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.GetStream(System.String,System.String)"/>, the stream is not seekable). Returns null if the file does not exist.
+            </summary>
+            <param name="fileId">FS internal id</param>
+            <param name="storageName"></param>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.OpenReadByExternalId(System.String,System.String)">
+            <summary>
+            Same as <see cref="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.OpenRead(System.String,System.String)"/>, by id from your system
+            </summary>
+            <param name="externalFileId">this is file id from your system</param>
+            <param name="storageName"></param>
         </member>
         <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService">
             <summary>
@@ -246,6 +345,137 @@
             <param name="storageName"></param>
             <returns></returns>
         </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService.GetStorageNames">
+            <summary>
+            Names of the storages created on the server
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService.OpenRead(System.String,System.String,System.String)">
+            <summary>
+            Opens the file for sequential reading directly from the HTTP response, without base64 and chunks
+            (unlike <see cref="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService.GetStream(System.String,System.String,System.String)"/>, the stream is not seekable). Returns null if the file does not exist.
+            </summary>
+            <param name="externalFolderId">this is folder id from your system</param>
+            <param name="externalFileId">this is file id from your system</param>
+            <param name="storageName"></param>
+        </member>
+        <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld">
+            <summary>
+            Previous version of <see cref="T:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService"/>: <see cref="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.GetStream(System.String,System.String,System.String)"/> reads the whole file
+            into memory (or a temporary file for large files) instead of reading it on demand.
+            All other methods are delegated to <see cref="T:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService"/>.
+            </summary>
+            <remarks>
+            Раньше класс был полной копией FolderStorageRestService со всеми его ошибками
+            (двойное хеширование id в Read, Delete всегда false, имя хранилища не передавалось в GetCount и т. д.).
+            </remarks>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.#ctor(Service.Registry.Common.Entities.RestClientResponseSettings)">
+            <summary>
+            Ctor
+            </summary>
+            <param name="settings"></param>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.#ctor(Service.Registry.Common.Entities.RestClientResponseSettings,System.Net.Http.IHttpClientFactory)">
+            <summary>
+            Ctor
+            </summary>
+            <param name="settings"></param>
+            <param name="client"></param>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.GetIdByExternal(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.GetCount(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.Write(System.String,System.String,System.String,System.Byte[],System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.Write(System.String,System.String,System.String,System.IO.Stream,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.Read(System.String,System.String,System.String,System.IO.Stream)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.GetSize(System.String,System.String,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.IsExists(System.String,System.String,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.GetExistIdByExternal(System.String,System.String,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.IsExistsByExternalId(System.String,System.String,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.Read(System.String,System.String,System.Int64,System.Int64,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.Delete(System.String,System.String,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.GetStream(System.String,System.String,System.String)">
+            <summary>
+            Reads the whole file into memory (or a temporary file for large files) and returns it
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.Move(System.String,System.String,System.String,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.RestHelper">
+            <summary>
+            Общие операции REST-клиентов: кодирование параметров запроса, GET/POST с проверкой ответа
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.RestHelper.Encode(System.String)">
+            <summary>
+            Значение параметра запроса в URL-кодировке (раньше id и имена подставлялись как есть,
+            и символы вроде '&amp;', '#', '+' или пробела ломали запрос)
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.RestHelper.WithName(System.String,System.String)">
+            <summary>
+            Добавляет к адресу имя хранилища, если оно задано
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.RestHelper.GetOk(System.Net.Http.HttpClient,System.String)">
+            <summary>
+            GET без разбора тела ответа; true, если сервер ответил успешно
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.RestHelper.PostJson(System.Net.Http.HttpClient,System.String,System.Object)">
+            <summary>
+            POST JSON. Если сервер ответил ошибкой — исключение: раньше ошибки записи терялись молча.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.RestHelper.OpenRead(System.Net.Http.HttpClient,System.String)">
+            <summary>
+            Открывает тело ответа как поток, не загружая его в память. null — файла нет (404 или пустой ответ).
+            </summary>
+        </member>
+        <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.HttpResponseStream">
+            <summary>
+            Поток тела HTTP-ответа; при закрытии освобождает и сам ответ
+            </summary>
+        </member>
+        <member name="P:FileStorage.Contracts.Rest.Impl.FileStorage.ReadMessage.Offset">
+            <summary>
+            Смещение для чтения части файла (команда Read)
+            </summary>
+        </member>
+        <member name="P:FileStorage.Contracts.Rest.Impl.FileStorage.ReadMessage.Length">
+            <summary>
+            Сколько байт прочитать начиная с Offset; 0 — весь файл (как раньше)
+            </summary>
+        </member>
+        <member name="P:FileStorage.Contracts.Rest.Impl.FileStorage.ReadMessage.IsPartial">
+            <summary>
+            Сервер вернул только запрошенную часть (Offset/Length). Старый сервер этот признак не выставляет
+            и возвращает файл целиком — тогда клиент вырезает нужную часть сам.
+            </summary>
+        </member>
         <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFileStorageService">
             <summary>
             Impl <see cref="T:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService"/>
@@ -284,12 +514,83 @@
             <param name="storageName"></param>
             <returns></returns>
         </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFileStorageService.GetSize(System.String,System.String)">
+            <summary>
+            Return file size
+            </summary>
+            <param name="fileId">internal FS id</param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFileStorageService.IsExists(System.String,System.String)">
+            <summary>
+            Is exists on FS
+            </summary> 
+            <param name="externalFileId">this is file id from your system</param> 
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFileStorageService.IsExistsByExternalId(System.String,System.String)">
             <summary>
-            
-            </summary> 
-            <param name="externalFileId"></param>
+            Is exists by externalId
+            </summary>
+            <param name="externalFileId">id from your system</param>
             <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFileStorageService.GetBytes(System.String,System.Int64,System.Int64,System.String)">
+            <summary>
+            Partial read 
+            </summary>
+            <param name="fileId">internal FS id</param>
+            <param name="offset"></param>
+            <param name="size"></param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFileStorageService.SendRead(System.String,System.Int64,System.Int64,System.String)">
+            <summary>
+            Команда Read по внутреннему id: просит у сервера только часть файла (Offset/Length)
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFileStorageService.Write(System.String,System.String,System.IO.Stream,System.String)">
+            <summary>
+            Save stream to FS
+            </summary> 
+            <param name="externalFileId">this is file id from your system</param> 
+            <param name="storageName"></param>
+            <param name="stream"></param>
+            <param name="sessionId"></param>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFileStorageService.Read(System.String,System.Int64,System.Int64,System.String)">
+            <summary>
+            Partial read 
+            </summary> 
+            <param name="externalFileId">this is file id from your system</param> 
+            <param name="offset"></param>
+            <param name="size"></param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFileStorageService.Delete(System.String,System.String)">
+            <summary>
+            Delete file from FS
+            </summary>
+            <param name="fileId">internal FS id</param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFileStorageService.DeleteByExternalId(System.String,System.String)">
+            <summary>
+            <see cref="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.DeleteByExternalId(System.String,System.String)"/>
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFileStorageService.GetStream(System.String,System.String)">
+            <summary>
+            Method return read only stream
+            </summary>
+            <param name="externalFileId">this is file id from your system</param> 
+            <param name="storageName">Storage name</param>
             <returns></returns>
         </member>
         <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFolderStorageService">
@@ -390,6 +691,11 @@
             <param name="storageName"></param>
             <returns></returns>
         </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFolderStorageService.SendRead(System.String,System.String,System.Int64,System.Int64,System.String)">
+            <summary>
+            Команда Read по внутренним id: просит у сервера только часть файла (Offset/Length)
+            </summary>
+        </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFolderStorageService.Delete(System.String,System.String,System.String)">
             <summary>
             
@@ -401,12 +707,44 @@
         </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFolderStorageService.GetStream(System.String,System.String,System.String)">
             <summary>
-            
+            Reads the whole file into memory (or a temporary file for large files) and returns it
             </summary>
             <param name="externalFolderId">folder id from your system</param>
             <param name="externalFileId">file id from your system</param>
             <param name="name"></param>
             <returns></returns>
+        </member>
+        <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.TcpResponse">
+            <summary>
+            Разбор ответов TCP-сервера
+            </summary>
+        </member>
+        <member name="F:FileStorage.Contracts.Rest.Impl.FileStorage.TcpResponse.ReadChunkSize">
+            <summary>
+            Размер блока при чтении файла по TCP
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpResponse.EnsureOk(FileStorage.Contracts.Rest.Impl.FileStorage.TcpCommonMessage,System.String)">
+            <summary>
+            Исключение, если сервер не ответил или ответил ошибкой (раньше такие ответы игнорировались)
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpResponse.GetRange(FileStorage.Contracts.Rest.Impl.FileStorage.ReadMessage,System.Int64,System.Int64)">
+            <summary>
+            Часть файла из ответа на команду Read. Новый сервер возвращает только запрошенную часть (IsPartial),
+            старый — файл целиком; тогда нужная часть вырезается здесь.
+            </summary>
+        </member>
+        <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFrameReader">
+            <summary>
+            Собирает кадры протокола ('@' + длина Int32 + UTF-8 данные + '#') из потока байт.
+            Неполный кадр остаётся в буфере до следующего чтения.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.TcpFrameReader.Append(System.Byte[],System.Int32)">
+            <summary>
+            Добавляет полученные байты и возвращает команды из всех полностью полученных кадров
+            </summary>
         </member>
         <member name="T:FileStorage.Contracts.Rest.Impl.IFolderStorageRestService">
             <summary>
@@ -468,6 +806,24 @@
         <member name="M:FileStorage.Contracts.Rest.Impl.IFolderStorageRestService.IsExists(System.String,System.String,System.String)">
             <summary>
             Is exists on FS
+            </summary>
+            <param name="externalFolderId">this is folder id from your system</param>
+            <param name="externalFileId">this is file id from your system</param> 
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.IFolderStorageRestService.GetExistIdByExternal(System.String,System.String,System.String)">
+            <summary>
+            Return exist id in FS by externalId (null or empty, if the file does not exist)
+            </summary>
+            <param name="externalFolderId">this is folder id from your system</param>
+            <param name="externalFileId">this is file id from your system</param> 
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.IFolderStorageRestService.IsExistsByExternalId(System.String,System.String,System.String)">
+            <summary>
+            Is exists on FS (the server computes internal ids from your ids)
             </summary>
             <param name="externalFolderId">this is folder id from your system</param>
             <param name="externalFileId">this is file id from your system</param> 

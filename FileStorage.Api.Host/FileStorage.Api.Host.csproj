@@ -6,7 +6,7 @@
     <StartupObject>FileStorage.Api.Host.Program</StartupObject>
     <UserSecretsId>c8b4b51f-91bc-4850-a606-726c78c4f1a8</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-    <Version>6.0.60</Version>
+    <Version>9.0.17</Version>
   </PropertyGroup>
 
   <ItemGroup>
