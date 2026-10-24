@@ -22,6 +22,11 @@
         int NumberOfShards { get; set; }
 		
 		public ServerConnectionConfig Connection { get; set; }
+
+		/// <summary>
+		/// Storing well compressible files as zip archives; null — files are not compressed
+		/// </summary>
+		FileCompressionSettings Compression => null;
 	}
 
     public sealed class ServerConnectionConfig

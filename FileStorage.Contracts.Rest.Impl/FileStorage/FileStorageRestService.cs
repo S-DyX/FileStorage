@@ -1,10 +1,12 @@
 ﻿using Newtonsoft.Json;
 using Service.Registry.Common.Entities;
 using Service.Registry.Utils;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 
 namespace FileStorage.Contracts.Rest.Impl.FileStorage
@@ -160,6 +162,66 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <param name="storageName"></param>
 		/// <returns>true, if the file existed and was deleted</returns>
 		bool DeleteByExternalId(string externalFileId, string storageName);
+
+		/// <summary>
+		/// Names of the storages created on the server
+		/// </summary>
+		/// <returns></returns>
+		List<string> GetStorageNames() => throw NotSupported();
+
+		/// <summary>
+		/// Opens the file for sequential reading directly from the HTTP response (not seekable).
+		/// Returns null if the file does not exist.
+		/// </summary>
+		/// <param name="fileId">internal FS id</param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
+		Stream OpenRead(string fileId, string storageName) => throw NotSupported();
+
+		/// <summary>
+		/// Same as <see cref="OpenRead"/>, by id from your system
+		/// </summary>
+		/// <param name="externalFileId">this is file id from your system</param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
+		Stream OpenReadByExternalId(string externalFileId, string storageName) => throw NotSupported();
+
+		/// <summary>
+		/// Uploads the stream in one multipart request (faster than <see cref="SaveBytes(string, string, Stream, string)"/>,
+		/// which sends base64 chunks). The file id is computed from <paramref name="externalFileId"/>.
+		/// The stream is read from its current position and is not closed.
+		/// </summary>
+		/// <param name="externalFileId">this is file id from your system</param>
+		/// <param name="stream"></param>
+		/// <param name="storageName"></param>
+		/// <returns>internal FS id of the saved file</returns>
+		string Upload(string externalFileId, Stream stream, string storageName) => throw NotSupported();
+
+		/// <summary>
+		/// Full path of the file on the server disk (for services running on the same host)
+		/// </summary>
+		/// <param name="fileId">internal FS id</param>
+		/// <param name="storageName"></param>
+		/// <returns></returns>
+		string GetFullName(string fileId, string storageName) => throw NotSupported();
+
+		/// <summary>
+		/// Changes the depth of the storage folder tree (moves the files). Use only on an idle storage.
+		/// </summary>
+		/// <param name="newDepth"></param>
+		/// <param name="storageName"></param>
+		void ChangeDepth(int newDepth, string storageName) => throw NotSupported();
+
+		/// <summary>
+		/// Version of the FileStorage server (also a health check)
+		/// </summary>
+		/// <returns></returns>
+		string GetVersion() => throw NotSupported();
+
+		private static NotSupportedException NotSupported()
+		{
+			return new NotSupportedException("The method is supported only by the REST client");
+		}
 	}
 
 	/// <summary>
@@ -367,7 +429,8 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 				}
 
 				bytes = GetBytes(fileId, offset, size, storageName);
-				if (bytes == null)
+				// пустой ответ раньше приводил к бесконечному циклу: offset не увеличивался
+				if (bytes == null || bytes.Length == 0)
 					return;
 				stream.Write(bytes, 0, bytes.Length);
 				offset += bytes.Length;
@@ -420,9 +483,7 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			return RestHelper.GetOk(client, RestHelper.WithName($"{_apiV1}delete/external?id={RestHelper.Encode(externalFileId)}", storageName));
 		}
 
-		/// <summary>
-		/// Names of the storages created on the server
-		/// </summary>
+		/// <inheritdoc />
 		public List<string> GetStorageNames()
 		{
 			var client = ClientFactory.CreateClient();
@@ -430,27 +491,66 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			return JsonConvert.DeserializeObject<List<string>>(responseJson) ?? new List<string>();
 		}
 
-		/// <summary>
-		/// Opens the file for sequential reading directly from the HTTP response, without base64 and chunks
-		/// (unlike <see cref="GetStream"/>, the stream is not seekable). Returns null if the file does not exist.
-		/// </summary>
-		/// <param name="fileId">FS internal id</param>
-		/// <param name="storageName"></param>
+		/// <inheritdoc />
 		public Stream OpenRead(string fileId, string storageName)
 		{
 			var client = ClientFactory.CreateClient();
 			return RestHelper.OpenRead(client, RestHelper.WithName($"{_apiV1}stream?id={RestHelper.Encode(fileId)}", storageName));
 		}
 
-		/// <summary>
-		/// Same as <see cref="OpenRead"/>, by id from your system
-		/// </summary>
-		/// <param name="externalFileId">this is file id from your system</param>
-		/// <param name="storageName"></param>
+		/// <inheritdoc />
 		public Stream OpenReadByExternalId(string externalFileId, string storageName)
 		{
 			var client = ClientFactory.CreateClient();
 			return RestHelper.OpenRead(client, RestHelper.WithName($"{_apiV1}stream/external?id={RestHelper.Encode(externalFileId)}", storageName));
+		}
+
+		/// <inheritdoc />
+		public string Upload(string externalFileId, Stream stream, string storageName)
+		{
+			if (string.IsNullOrEmpty(externalFileId))
+				throw new ArgumentNullException(nameof(externalFileId));
+			if (stream == null)
+				throw new ArgumentNullException(nameof(stream));
+
+			var client = ClientFactory.CreateClient();
+			using (var content = new MultipartFormDataContent())
+			{
+				var file = new NonDisposingStreamContent(stream);
+				file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+				// the server takes the file name as the external id
+				content.Add(file, "files", externalFileId);
+				var responseJson = RestHelper.PostContent(client, RestHelper.WithName($"{_apiV1}upload", storageName), content);
+				var items = string.IsNullOrWhiteSpace(responseJson)
+					? null
+					: JsonConvert.DeserializeAnonymousType(responseJson, new[] { new { FileName = default(string), Id = default(string) } });
+				// older servers answered with an empty body
+				return items?.FirstOrDefault()?.Id ?? GetIdByExternal(externalFileId);
+			}
+		}
+
+		/// <inheritdoc />
+		public string GetFullName(string fileId, string storageName)
+		{
+			var client = ClientFactory.CreateClient();
+			var response = RestHelper.GetString(client, RestHelper.WithName($"{_apiV1}path?id={RestHelper.Encode(fileId)}", storageName));
+			return RestHelper.ParseString(response);
+		}
+
+		/// <inheritdoc />
+		public void ChangeDepth(int newDepth, string storageName)
+		{
+			var client = ClientFactory.CreateClient();
+			RestHelper.GetEnsureSuccess(client, RestHelper.WithName($"{_apiV1}changeDepth?newDepth={newDepth}", storageName));
+		}
+
+		/// <inheritdoc />
+		public string GetVersion()
+		{
+			var client = ClientFactory.CreateClient();
+			var responseJson = RestHelper.GetString(client, $"{_apiV1}../version");
+			var response = JsonConvert.DeserializeAnonymousType(responseJson, new { Version = default(string), Name = default(string) });
+			return response?.Version;
 		}
 
 		#endregion

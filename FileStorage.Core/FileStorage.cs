@@ -100,19 +100,76 @@ namespace FileStorage.Core
 		{
 			var length = new FileInfo(filenameFrom).Length;
 			var target = new FileInfo(fileNameTo);
+			var archiveTo = FileArchive.GetArchiveName(fileNameTo);
 			// Если id — это хеш содержимого (SaveAsHash), файл с тем же id и размером уже тот же самый:
 			// побайтное сравнение (чтение обоих файлов целиком) не нужно. Для явного id сравниваем содержимое.
-			if (target.Exists && target.Length == length && (contentAddressed || StreamHelper.FilesAreEqual(fileNameTo, filenameFrom)))
+			var sameFile = target.Exists && target.Length == length && (contentAddressed || StreamHelper.FilesAreEqual(fileNameTo, filenameFrom));
+			// сохранённый ранее файл мог быть сжат: для хеша содержимого достаточно сравнить размер
+			var sameArchive = !target.Exists && contentAddressed && _fileStorageVirtual.Exists(archiveTo) && FileArchive.GetLength(archiveTo) == length;
+			if (sameFile || sameArchive)
 			{
 				// такой же файл уже сохранён (например, повторный SaveAsHash) — перезаписывать не нужно
 				_fileStorageVirtual.Delete(filenameFrom);
-				_fileStorageVirtual.Add(fileNameTo);
+				_fileStorageVirtual.Add(sameFile ? fileNameTo : archiveTo);
 				return;
 			}
-			// File.Move перезаписывает существующий файл. Раньше новое содержимое того же размера молча
-			// выбрасывалось, а если кеш считал файл существующим, а на диске его не было, данные терялись.
-			_fileStorageVirtual.Move(filenameFrom, fileNameTo);
+			if (!TryMoveCompressed(fileNameTo, filenameFrom, fileInfo.Name))
+			{
+				// File.Move перезаписывает существующий файл. Раньше новое содержимое того же размера молча
+				// выбрасывалось, а если кеш считал файл существующим, а на диске его не было, данные терялись.
+				_fileStorageVirtual.Move(filenameFrom, fileNameTo);
+				// архив предыдущей версии файла больше не нужен
+				DeleteArchive(fileNameTo);
+			}
 			_log.Write(EventType.FileSave, fileInfo.Name, length);
+		}
+
+		/// <summary>
+		/// Сохраняет файл архивом "&lt;id&gt;.zip", если его тип хорошо сжимается (см. настройку Compression).
+		/// </summary>
+		/// <returns>false — файл не сжат и остаётся во временном файле</returns>
+		private bool TryMoveCompressed(string fileNameTo, string filenameFrom, string id)
+		{
+			var archiveFrom = filenameFrom + FileArchive.Extension + ".tmp";
+			if (!FileArchive.TryCompress(filenameFrom, archiveFrom, id, _settings.Compression, _localLogger))
+				return false;
+
+			// Сначала архив встаёт на место, затем удаляется прежняя версия без сжатия.
+			// Если процесс прервётся между ними, останется прежняя версия: несжатый файл читается первым.
+			_fileStorageVirtual.Move(archiveFrom, FileArchive.GetArchiveName(fileNameTo));
+			if (_fileStorageVirtual.Exists(fileNameTo))
+				_fileStorageVirtual.Delete(fileNameTo);
+			_fileStorageVirtual.Delete(filenameFrom);
+			return true;
+		}
+
+		private void DeleteArchive(string fileName)
+		{
+			var archive = FileArchive.GetArchiveName(fileName);
+			if (_fileStorageVirtual.Exists(archive))
+				_fileStorageVirtual.Delete(archive);
+		}
+
+		/// <summary>
+		/// Дописывать можно только в несжатый файл: архив распаковывается на место файла.
+		/// </summary>
+		private void ExtractArchive(string fileName)
+		{
+			var archive = FileArchive.GetArchiveName(fileName);
+			if (_fileStorageVirtual.Exists(fileName) || !_fileStorageVirtual.Exists(archive))
+				return;
+
+			var tempFileName = GetTempFileName(fileName, "extract");
+			try
+			{
+				FileArchive.Extract(archive, tempFileName);
+				_fileStorageVirtual.Move(tempFileName, fileName);
+			}
+			finally
+			{
+				FileArchive.TryDelete(tempFileName);
+			}
+			_fileStorageVirtual.Delete(archive);
 		}
 
 		/// <summary>
@@ -198,6 +255,7 @@ namespace FileStorage.Core
 		public void Append(byte[] array, string id)
 		{
 			var fullName = GetFullFileName(id, true);
+			ExtractArchive(fullName);
 
 			long length;
 			using (var stream = File.Open(fullName, FileMode.Append, FileAccess.Write,
@@ -265,7 +323,13 @@ namespace FileStorage.Core
 					share);
 			}
 
-			return null;
+			var archive = FileArchive.GetArchiveName(fileName);
+			if (!_fileStorageVirtual.Exists(archive))
+				return null;
+			if (mode != FileMode.Open || access != FileAccess.Read)
+				throw new NotSupportedException($"File {id} is stored as an archive and can be opened only for reading");
+			// архив распаковывается прозрачно: поток с исходным содержимым, с перемоткой
+			return FileArchive.OpenRead(archive);
 		}
 		/// <summary>
 		/// <see cref="IFileStorage{TValue}.Delete(string)"/>
@@ -276,10 +340,16 @@ namespace FileStorage.Core
 		{
 			var directory = GetDirectory(id);
 			var fileName = GetFullFileName(id);
-			if (!_fileStorageVirtual.Exists(fileName))
+			var archive = FileArchive.GetArchiveName(fileName);
+			var exists = _fileStorageVirtual.Exists(fileName);
+			var archived = _fileStorageVirtual.Exists(archive);
+			if (!exists && !archived)
 				return false;
 
-			_fileStorageVirtual.Delete(fileName);
+			if (exists)
+				_fileStorageVirtual.Delete(fileName);
+			if (archived)
+				_fileStorageVirtual.Delete(archive);
 			// каталог мог исчезнуть раньше, чем обновился кеш; корень хранилища не удаляем
 			if (!IsRootDirectory(directory) && Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
 			{
@@ -323,7 +393,7 @@ namespace FileStorage.Core
 		public bool Exists(string id)
 		{
 			var fileName = GetFullFileName(id);
-			return _fileStorageVirtual.Exists(fileName);
+			return _fileStorageVirtual.Exists(fileName) || _fileStorageVirtual.Exists(FileArchive.GetArchiveName(fileName));
 		}
 
 		private string GetDirectory(string id)
@@ -408,9 +478,10 @@ namespace FileStorage.Core
 			var moves = new List<KeyValuePair<string, string>>();
 			foreach (var file in files)
 			{
-				var id = Path.GetFileName(file);
-				var newDirectoryName = GetDirectory(id, newDepth);
-				var destFileName = newDirectoryName + Path.DirectorySeparatorChar + id;
+				var name = Path.GetFileName(file);
+				// каталог считается по id, у сжатого файла имя — "<id>.zip"
+				var newDirectoryName = GetDirectory(FileArchive.GetStoredName(name), newDepth);
+				var destFileName = newDirectoryName + Path.DirectorySeparatorChar + name;
 				if (!string.Equals(file, destFileName, PathComparison))
 					moves.Add(new KeyValuePair<string, string>(file, destFileName));
 			}
@@ -506,7 +577,8 @@ namespace FileStorage.Core
 				if (lastChange >= date)
 					continue;
 				var isStorageFile = !file.StartsWith(logDirectory, PathComparison) && !file.EndsWith(".tmp", PathComparison);
-				if (isStorageFile && freshIds.Contains(fileInfo.Name))
+				var id = FileArchive.GetStoredName(fileInfo.Name);
+				if (isStorageFile && freshIds.Contains(id))
 					continue;
 				try
 				{
@@ -515,7 +587,7 @@ namespace FileStorage.Core
 					// об удалении файлов хранилища пишем в журнал, чтобы его увидела синхронизация
 					if (isStorageFile)
 					{
-						_log.Write(EventType.FileDelete, fileInfo.Name, length);
+						_log.Write(EventType.FileDelete, id, length);
 					}
 				}
 				catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
@@ -563,7 +635,8 @@ namespace FileStorage.Core
 			var files = _fileStorageVirtual.GetFileNames((int)offset, count);
 			foreach (var file in files)
 			{
-				var id = file.Split(Path.DirectorySeparatorChar).LastOrDefault();
+				// у сжатого файла имя — "<id>.zip"
+				var id = FileArchive.GetStoredName(Path.GetFileName(file));
 
 				if (!_log.IsExists(id))
 				{
@@ -679,9 +752,9 @@ namespace FileStorage.Core
 			_log.Write(new EventMessage()
 			{
 				Type = EventType.FileSave,
-				Id = fileInfo.Name,
+				Id = FileArchive.GetStoredName(fileInfo.Name),
 				Time = fileInfo.CreationTimeUtc,
-				Size = fileInfo.Length
+				Size = GetStoredLength(fileInfo)
 			});
 			//if (!_files.ContainsKey(fileInfo.Name))
 			//{
@@ -709,6 +782,17 @@ namespace FileStorage.Core
 		}
 
 		/// <summary>
+		/// Размер содержимого файла: у архива — размер распакованного файла
+		/// </summary>
+		private static long GetStoredLength(FileInfo fileInfo)
+		{
+			if (!fileInfo.Name.EndsWith(FileArchive.Extension, StringComparison.OrdinalIgnoreCase))
+				return fileInfo.Length;
+			var length = FileArchive.GetLength(fileInfo.FullName);
+			return length >= 0 ? length : fileInfo.Length;
+		}
+
+		/// <summary>
 		/// <see cref="IFileStorage{TValue}.GetFullFileName(string)"/>
 		/// </summary>
 		/// <param name="id"></param>
@@ -733,10 +817,24 @@ namespace FileStorage.Core
 			if (string.Equals(fileNameFrom, fileNameTo, PathComparison))
 				return;
 
-			// размер берём до переноса: после него исходного файла уже нет
-			var length = new FileInfo(fileNameFrom).Length;
-			// File.Move перезаписывает существующий файл, удалять его отдельно не нужно
-			_fileStorageVirtual.Move(fileNameFrom, fileNameTo);
+			long length;
+			if (_fileStorageVirtual.Exists(fileNameFrom))
+			{
+				// размер берём до переноса: после него исходного файла уже нет
+				length = new FileInfo(fileNameFrom).Length;
+				// File.Move перезаписывает существующий файл, удалять его отдельно не нужно
+				_fileStorageVirtual.Move(fileNameFrom, fileNameTo);
+				DeleteArchive(fileNameTo);
+			}
+			else
+			{
+				// сжатый файл переносится архивом, без распаковки
+				var archiveFrom = FileArchive.GetArchiveName(fileNameFrom);
+				length = Math.Max(0, FileArchive.GetLength(archiveFrom));
+				_fileStorageVirtual.Move(archiveFrom, FileArchive.GetArchiveName(fileNameTo));
+				if (_fileStorageVirtual.Exists(fileNameTo))
+					_fileStorageVirtual.Delete(fileNameTo);
+			}
 
 			_log.Write(EventType.FileDelete, fromId, length);
 			_log.Write(EventType.FileSave, toId, length);
@@ -757,11 +855,17 @@ namespace FileStorage.Core
 					var fileInfo = new FileInfo(fullName);
 					return fileInfo.Length;
 				}
+
+				// у сжатого файла — размер исходного содержимого
+				var archive = FileArchive.GetArchiveName(fullName);
+				if (_fileStorageVirtual.Exists(archive))
+					return Math.Max(0, FileArchive.GetLength(archive));
 			}
 			catch (FileNotFoundException e)
 			{
 				_localLogger?.Error($"{fullName};{e.Message}", e);
 				_fileStorageVirtual.Release(fullName);
+				_fileStorageVirtual.Release(FileArchive.GetArchiveName(fullName));
 			}
 			return 0;
 		}

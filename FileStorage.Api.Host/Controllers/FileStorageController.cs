@@ -120,6 +120,9 @@ namespace FileStorage.Api.Host.Controllers
 
 		[HttpPost]
 		[Route("upload")]
+		// без снятия лимитов Kestrel (30 МБ) и формы (128 МБ) большие файлы не загружались
+		[DisableRequestSizeLimit]
+		[RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)]
 		public IActionResult Upload(IFormFileCollection files)
 		{
 			var storageName = GetFsName();
@@ -167,7 +170,8 @@ namespace FileStorage.Api.Host.Controllers
 				}
 			}
 
-			return Ok();
+			// раньше ответ был пустым, и клиент не узнавал id сохранённых файлов
+			return Ok(result);
 		}
 		[HttpGet]
 		[Route("exists/External")]
@@ -210,8 +214,9 @@ namespace FileStorage.Api.Host.Controllers
 			var storageName = GetFsName();
 			var internalId = _fileStorageService.GetIdByExternal(id);
 			var stream = this._fileStorageLocalService.GetById(internalId, this.Request);
+			// раньше результат NotFound терялся, и клиент получал пустой ответ 204
 			if (stream == null)
-				NotFound($"{id}");
+				return NotFound($"{id}");
 
 			return stream;
 		}

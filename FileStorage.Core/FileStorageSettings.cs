@@ -1,6 +1,11 @@
 ﻿using FileStorage.Core.Interfaces.Settings;
 using Microsoft.Extensions.Configuration;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.IO.Compression;
+using System.Linq;
 
 namespace FileStorage.Core
 {
@@ -53,6 +58,8 @@ namespace FileStorage.Core
                 };
             }
 
+            Compression = LoadCompression(configuration.GetSection("Compression"));
+
         }
 
         /// <summary>
@@ -71,6 +78,7 @@ namespace FileStorage.Core
 
             ElementsCount = elementsCount;
             Depth = depth;
+            Compression = new FileCompressionSettings();
             Connection = new ServerConnectionConfig()
             {
                 Tcp = new TcpSettings() { Address = "127.0.0.1", Port = 11581 }
@@ -93,5 +101,41 @@ namespace FileStorage.Core
         public int NumberOfShards { get; set; }
 
         public ServerConnectionConfig Connection { get; set; }
+
+        /// <summary>
+        /// <see cref="IFileStorageSettings.Compression"/>
+        /// </summary>
+        public FileCompressionSettings Compression { get; set; }
+
+        private static FileCompressionSettings LoadCompression(IConfigurationSection section)
+        {
+            // Секция необязательна: на установленных серверах конфигурацию не обновить,
+            // поэтому сжатие включено по умолчанию, а секция только переопределяет значения.
+            var result = new FileCompressionSettings();
+            if (!section.Exists())
+                return result;
+
+            if (bool.TryParse(section["Enabled"], out var enabled))
+                result.Enabled = enabled;
+            if (bool.TryParse(section["CompressUnknown"], out var unknown))
+                result.CompressUnknown = unknown;
+            if (long.TryParse(section["MinSize"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var minSize))
+                result.MinSize = minSize;
+            if (long.TryParse(section["MaxSize"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var maxSize))
+                result.MaxSize = maxSize;
+            if (double.TryParse(section["MaxRatio"], NumberStyles.Float, CultureInfo.InvariantCulture, out var ratio))
+                result.MaxRatio = ratio;
+            if (Enum.TryParse<CompressionLevel>(section["Level"], true, out var level))
+                result.Level = level;
+
+            var extensions = section.GetSection("Extensions").GetChildren()
+                .Select(x => x.Value?.Trim().TrimStart('.'))
+                .Where(x => !string.IsNullOrEmpty(x))
+                .ToList();
+            if (extensions.Count > 0)
+                result.Extensions = new HashSet<string>(extensions, StringComparer.OrdinalIgnoreCase);
+
+            return result;
+        }
     }
 }

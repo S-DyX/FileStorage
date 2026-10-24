@@ -204,8 +204,9 @@ namespace FileStorage.Api.Host.Controllers
 		{
             var info = GetInfoByExternalId(folderId, fileId);
 			var stream = this._fileStorageLocalService.GetById(info, this.Request);
+			// раньше результат NotFound терялся, и клиент получал пустой ответ 204
 			if (stream == null)
-				NotFound($"{info.FileId}");
+				return NotFound($"{info.FileId}");
 
 			return stream;
 		}

@@ -3,6 +3,8 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Service.Registry.Utils;
 
@@ -49,6 +51,39 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		}
 
 		/// <summary>
+		/// GET без разбора тела ответа; исключение, если сервер ответил ошибкой
+		/// </summary>
+		public static void GetEnsureSuccess(HttpClient client, string url)
+		{
+			using (var response = RunSyncUtil.RunSync(() => client.GetAsync(url)))
+			{
+				response.EnsureSuccessStatusCode();
+			}
+		}
+
+		/// <summary>
+		/// Строка из ответа: ASP.NET Core отдаёт строку как text/plain, а при JSON-форматере — в кавычках
+		/// </summary>
+		public static string ParseString(string response)
+		{
+			if (string.IsNullOrEmpty(response))
+				return null;
+			return response.StartsWith("\"") ? JsonConvert.DeserializeObject<string>(response) : response;
+		}
+
+		/// <summary>
+		/// POST произвольного содержимого; исключение, если сервер ответил ошибкой. Возвращает тело ответа.
+		/// </summary>
+		public static string PostContent(HttpClient client, string url, HttpContent content)
+		{
+			using (var response = RunSyncUtil.RunSync(() => client.PostAsync(url, content)))
+			{
+				response.EnsureSuccessStatusCode();
+				return RunSyncUtil.RunSync(() => response.Content.ReadAsStringAsync());
+			}
+		}
+
+		/// <summary>
 		/// POST JSON. Если сервер ответил ошибкой — исключение: раньше ошибки записи терялись молча.
 		/// </summary>
 		public static void PostJson(HttpClient client, string url, object request)
@@ -82,6 +117,43 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 				response.Dispose();
 				throw;
 			}
+		}
+	}
+
+	/// <summary>
+	/// Содержимое запроса из потока вызывающего кода: копирует поток, но не закрывает его
+	/// (StreamContent закрывает поток вместе с собой)
+	/// </summary>
+	internal sealed class NonDisposingStreamContent : HttpContent
+	{
+		private const int BufferSize = 81920;
+
+		private readonly Stream _stream;
+
+		public NonDisposingStreamContent(Stream stream)
+		{
+			_stream = stream ?? throw new ArgumentNullException(nameof(stream));
+		}
+
+		protected override Task SerializeToStreamAsync(Stream stream, TransportContext context)
+		{
+			return _stream.CopyToAsync(stream, BufferSize);
+		}
+
+		protected override Task SerializeToStreamAsync(Stream stream, TransportContext context, CancellationToken cancellationToken)
+		{
+			return _stream.CopyToAsync(stream, BufferSize, cancellationToken);
+		}
+
+		protected override bool TryComputeLength(out long length)
+		{
+			if (_stream.CanSeek)
+			{
+				length = _stream.Length - _stream.Position;
+				return true;
+			}
+			length = 0;
+			return false;
 		}
 	}
 

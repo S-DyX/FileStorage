@@ -219,9 +219,7 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			RestHelper.GetString(client, address);
 		}
 
-		/// <summary>
-		/// Names of the storages created on the server
-		/// </summary>
+		/// <inheritdoc />
 		public List<string> GetStorageNames()
 		{
 			var client = ClientFactory.CreateClient();
@@ -229,18 +227,43 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 			return JsonConvert.DeserializeObject<List<string>>(responseJson) ?? new List<string>();
 		}
 
-		/// <summary>
-		/// Opens the file for sequential reading directly from the HTTP response, without base64 and chunks
-		/// (unlike <see cref="GetStream"/>, the stream is not seekable). Returns null if the file does not exist.
-		/// </summary>
-		/// <param name="externalFolderId">this is folder id from your system</param>
-		/// <param name="externalFileId">this is file id from your system</param>
-		/// <param name="storageName"></param>
+		/// <inheritdoc />
 		public Stream OpenRead(string externalFolderId, string externalFileId, string storageName)
 		{
 			var client = ClientFactory.CreateClient();
 			var address = RestHelper.WithName($"{_apiV1}stream/external?folderId={RestHelper.Encode(externalFolderId)}&fileId={RestHelper.Encode(externalFileId)}", storageName);
 			return RestHelper.OpenRead(client, address);
+		}
+
+		/// <inheritdoc />
+		public string GetFullName(string externalFolderId, string externalFileId, string storageName)
+		{
+			var client = ClientFactory.CreateClient();
+			var address = RestHelper.WithName($"{_apiV1}path?folderId={externalFolderId.GetSha1Hash()}&fileId={externalFileId.GetSha1Hash()}", storageName);
+			return RestHelper.ParseString(RestHelper.GetString(client, address));
+		}
+
+		/// <inheritdoc />
+		public void ClearTtl(int daysAgo, string storageName)
+		{
+			var client = ClientFactory.CreateClient();
+			RestHelper.GetEnsureSuccess(client, RestHelper.WithName($"{_apiV1}clearTtl?daysAgo={daysAgo}", storageName));
+		}
+
+		/// <inheritdoc />
+		public void ChangeDepth(int newDepth, string storageName)
+		{
+			var client = ClientFactory.CreateClient();
+			RestHelper.GetEnsureSuccess(client, RestHelper.WithName($"{_apiV1}changeDepth?newDepth={newDepth}", storageName));
+		}
+
+		/// <inheritdoc />
+		public string GetVersion()
+		{
+			var client = ClientFactory.CreateClient();
+			var responseJson = RestHelper.GetString(client, $"{_apiV1}../version");
+			var response = JsonConvert.DeserializeAnonymousType(responseJson, new { Version = default(string), Name = default(string) });
+			return response?.Version;
 		}
 
 		#endregion

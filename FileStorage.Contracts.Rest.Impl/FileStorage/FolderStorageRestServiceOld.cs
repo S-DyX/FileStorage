@@ -1,5 +1,6 @@
 ﻿using Service.Registry.Common.Entities;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 
@@ -99,5 +100,23 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// <inheritdoc />
 		public void Move(string externalFolderId, string toExternalFolderId, string externalFileId, string storageName)
 			=> _service.Move(externalFolderId, toExternalFolderId, externalFileId, storageName);
+
+		/// <inheritdoc />
+		public List<string> GetStorageNames() => _service.GetStorageNames();
+
+		/// <inheritdoc />
+		public Stream OpenRead(string externalFolderId, string externalFileId, string storageName) => _service.OpenRead(externalFolderId, externalFileId, storageName);
+
+		/// <inheritdoc />
+		public string GetFullName(string externalFolderId, string externalFileId, string storageName) => _service.GetFullName(externalFolderId, externalFileId, storageName);
+
+		/// <inheritdoc />
+		public void ClearTtl(int daysAgo, string storageName) => _service.ClearTtl(daysAgo, storageName);
+
+		/// <inheritdoc />
+		public void ChangeDepth(int newDepth, string storageName) => _service.ChangeDepth(newDepth, storageName);
+
+		/// <inheritdoc />
+		public string GetVersion() => _service.GetVersion();
 	}
 }
