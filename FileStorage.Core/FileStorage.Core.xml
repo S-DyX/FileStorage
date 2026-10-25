@@ -94,6 +94,17 @@
             <param name="file"></param>
             <returns></returns>
         </member>
+        <member name="M:FileStorage.Core.FileStorage.TryMoveCompressed(System.String,System.String,System.String)">
+            <summary>
+            Сохраняет файл архивом "&lt;id&gt;.zip", если его тип хорошо сжимается (см. настройку Compression).
+            </summary>
+            <returns>false — файл не сжат и остаётся во временном файле</returns>
+        </member>
+        <member name="M:FileStorage.Core.FileStorage.ExtractArchive(System.String)">
+            <summary>
+            Дописывать можно только в несжатый файл: архив распаковывается на место файла.
+            </summary>
+        </member>
         <member name="M:FileStorage.Core.FileStorage.SaveToFile(FileStorage.Core.Contracts.SaveFileRequest)">
             <summary>
             <see cref="M:FileStorage.Core.IFileStorage`1.SaveToFile(FileStorage.Core.Contracts.SaveFileRequest)"/>
@@ -213,6 +224,11 @@
             <param name="id"></param>
             <returns></returns>
         </member>
+        <member name="M:FileStorage.Core.FileStorage.GetStoredLength(System.IO.FileInfo)">
+            <summary>
+            Размер содержимого файла: у архива — размер распакованного файла
+            </summary>
+        </member>
         <member name="M:FileStorage.Core.FileStorage.GetFullFileName(System.String)">
             <summary>
             <see cref="M:FileStorage.Core.IFileStorage`1.GetFullFileName(System.String)"/>
@@ -320,6 +336,11 @@
             <see cref="P:FileStorage.Core.Interfaces.Settings.IFileStorageSettings.Depth"/>
             </summary>
         </member>
+        <member name="P:FileStorage.Core.FileStorageSettings.Compression">
+            <summary>
+            <see cref="P:FileStorage.Core.Interfaces.Settings.IFileStorageSettings.Compression"/>
+            </summary>
+        </member>
         <member name="T:FileStorage.Core.FolderStorage">
             <summary>
             Hierarchical file storage stored on disk
@@ -337,6 +358,17 @@
             </summary>
             <param name="file"></param>
             <returns></returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.TryMoveCompressed(System.String,System.String,System.String)">
+            <summary>
+            Сохраняет файл архивом "&lt;id&gt;.zip", если его тип хорошо сжимается (см. настройку Compression).
+            </summary>
+            <returns>false — файл не сжат и остаётся во временном файле</returns>
+        </member>
+        <member name="M:FileStorage.Core.FolderStorage.ExtractArchive(System.String)">
+            <summary>
+            Дописывать можно только в несжатый файл: архив распаковывается на место файла.
+            </summary>
         </member>
         <member name="M:FileStorage.Core.FolderStorage.SaveToFile(FileStorage.Core.Contracts.SaveFileRequest)">
             <summary>
@@ -464,6 +496,11 @@
             <param name="id"></param>
             <returns></returns>
         </member>
+        <member name="M:FileStorage.Core.FolderStorage.GetStoredLength(System.IO.FileInfo)">
+            <summary>
+            Размер содержимого файла: у архива — размер распакованного файла
+            </summary>
+        </member>
         <member name="M:FileStorage.Core.FolderStorage.GetFullFileName(FileStorage.Core.FolderStorageInfo)">
             <summary>
             <see cref="M:FileStorage.Core.IFolderStorage.GetFullFileName(FileStorage.Core.FolderStorageInfo)"/>
@@ -530,6 +567,201 @@
             <summary>
             Останавливает таймеры журнала и сохраняет ещё не записанные события
             </summary>
+        </member>
+        <member name="T:FileStorage.Core.Helpers.FileArchive">
+            <summary>
+            A stored file may be kept as a zip archive "&lt;file&gt;.zip" with a single entry. The storages check the
+            plain file first and then its archive, so no database or extra fields are needed.
+            </summary>
+        </member>
+        <member name="F:FileStorage.Core.Helpers.FileArchive.Extension">
+            <summary>
+            Extension of an archived file.
+            </summary>
+        </member>
+        <member name="F:FileStorage.Core.Helpers.FileArchive.MemoryThreshold">
+            <summary>
+            Archives with smaller content are unpacked into memory, larger ones — into a cached temporary file.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileArchive.GetArchiveName(System.String)">
+            <summary>
+            Name of the archive of the file.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileArchive.GetStoredName(System.String)">
+            <summary>
+            Name of the stored file: the archive extension is removed.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileArchive.TryCompress(System.String,System.String,System.String,FileStorage.Core.Interfaces.Settings.FileCompressionSettings,FileStorage.Core.Interfaces.ILocalLogger)">
+            <summary>
+            Compresses <paramref name="source"/> into <paramref name="archive"/> when the type of the file is
+            compressible and the archive is small enough. Returns false (and leaves no archive) otherwise.
+            </summary>
+            <param name="source">File to compress.</param>
+            <param name="archive">Archive to create.</param>
+            <param name="entryName">Name of the entry in the archive (the file id).</param>
+            <param name="settings">Compression settings; null — do not compress.</param>
+            <param name="logger">Logger of compression errors.</param>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileArchive.GetLength(System.String)">
+            <summary>
+            Size of the archived file (the size of its content, not of the archive); -1 if the archive is not valid.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileArchive.OpenRead(System.String)">
+            <summary>
+            Seekable read only stream with the content of the archive; null if the archive is not valid.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileArchive.Extract(System.String,System.String)">
+            <summary>
+            Unpacks the archive into <paramref name="target"/> (overwrites it).
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileArchive.IsCompressible(System.String,FileStorage.Core.Interfaces.Settings.FileCompressionSettings)">
+            <summary>
+            Is the type of the file (by its signature) in the list of compressible types.
+            </summary>
+        </member>
+        <member name="T:FileStorage.Core.Helpers.DecompressedFileCache">
+            <summary>
+            Unpacked copies of large archives in the temporary folder. Partial reads (getbytes, Range requests)
+            open the file many times: without the cache every read would unpack the archive from the start.
+            A copy is removed after <see cref="F:FileStorage.Core.Helpers.DecompressedFileCache.IdleTime"/> without reads or when the archive changes.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.DecompressedFileCache.Open(System.IO.FileInfo,System.IO.Compression.ZipArchiveEntry)">
+            <summary>
+            Read only stream over the unpacked copy of the archive entry.
+            </summary>
+        </member>
+        <member name="T:FileStorage.Core.Helpers.FileSignatureDetector">
+            <summary>
+            Detects the content type of a file by its signature (magic bytes) instead of comparing hex strings.
+            </summary>
+        </member>
+        <member name="F:FileStorage.Core.Helpers.FileSignatureDetector.HeaderSize">
+            <summary>
+            Bytes read from the start of the stream: enough for TAR (signature at offset 257) and for the
+            first entries of ZIP based formats (docx, xlsx, pptx, odt, epub, jar, apk).
+            </summary>
+        </member>
+        <member name="F:FileStorage.Core.Helpers.FileSignatureDetector.IsoSignatureOffset">
+            <summary>
+            ISO 9660 primary volume descriptor: "CD001" at offset 0x8001.
+            </summary>
+        </member>
+        <member name="F:FileStorage.Core.Helpers.FileSignatureDetector.OleDirectoryEntrySize">
+            <summary>
+            Size of an OLE compound file (doc, xls, ppt, msg) directory entry.
+            </summary>
+        </member>
+        <member name="F:FileStorage.Core.Helpers.FileSignatureDetector.OleCompound">
+            <summary>
+            Marker of an OLE compound file: the concrete type is read from its directory.
+            </summary>
+        </member>
+        <member name="F:FileStorage.Core.Helpers.FileSignatureDetector.StrongSignatures">
+            <summary>
+            Unambiguous signatures, checked first.
+            </summary>
+        </member>
+        <member name="F:FileStorage.Core.Helpers.FileSignatureDetector.WeakSignatures">
+            <summary>
+            Short signatures that may occur in other data, checked after the containers.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignatureDetector.Detect(System.IO.Stream)">
+            <summary>
+            Detects the content type of the stream by its first bytes. The position of a seekable stream is restored.
+            </summary>
+            <param name="stream">Stream positioned at the start of the file.</param>
+            <returns>Content type and extension of the file; null for an unknown format.</returns>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignatureDetector.Detect(System.String)">
+            <summary>
+            Detects the content type of the file by its first bytes.
+            </summary>
+            <param name="fileName">Full name of the file.</param>
+            <returns>Content type and extension of the file; null for an unknown format.</returns>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignatureDetector.DetectZip(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            ZIP and formats built on it: the first entries name the inner format.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignatureDetector.DetectIsoMedia(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            ISO base media file format (mp4, mov, m4a, 3gp, heic, avif): the brand follows "ftyp".
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignatureDetector.DetectMpegAudio(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            MPEG audio frame sync: 11 set bits. Layer 0 is AAC (ADTS), layers 1-3 are MPEG audio (mp3).
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignatureDetector.DetectMpegTs(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            MPEG transport stream: 188-byte packets starting with 0x47.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignatureDetector.DetectBmp(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            "BM" alone is too short: the reserved fields must be zero and the DIB header size known.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignatureDetector.DetectText(System.ReadOnlySpan{System.Byte},System.Boolean)">
+            <summary>
+            Text formats: valid UTF-8 or UTF-16 with a BOM, without control characters.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignatureDetector.IsCsv(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            The first line has at least two ';' or tab separators (Excel exports in the Russian locale use ';').
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignatureDetector.TrimIncompleteUtf8(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            The header may cut a multi-byte UTF-8 character: drop its first bytes.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignatureDetector.DetectOle(System.IO.Stream,System.Int64,System.ReadOnlySpan{System.Byte})">
+            <summary>
+            OLE compound file (doc, xls, ppt, msg): reads the first directory sector and looks for the
+            stream names. Falls back to doc when the directory cannot be read.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignatureDetector.ReadAtLeast(System.IO.Stream,System.Span{System.Byte})">
+            <summary>
+            Reads until the buffer is full or the stream ends (Stream.ReadAtLeast is not available in .NET 6).
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignatureDetector.IsValidUtf8(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            Utf8.IsValid is not available in .NET 6.
+            </summary>
+        </member>
+        <member name="T:FileStorage.Core.Helpers.FileSignature">
+            <summary>
+            Content type of a file detected by its signature.
+            </summary>
+            <param name="ContentType">MIME type, e.g. "text/plain".</param>
+            <param name="Extension">Usual file extension without the dot, e.g. "txt".</param>
+        </member>
+        <member name="M:FileStorage.Core.Helpers.FileSignature.#ctor(System.String,System.String)">
+            <summary>
+            Content type of a file detected by its signature.
+            </summary>
+            <param name="ContentType">MIME type, e.g. "text/plain".</param>
+            <param name="Extension">Usual file extension without the dot, e.g. "txt".</param>
+        </member>
+        <member name="P:FileStorage.Core.Helpers.FileSignature.ContentType">
+            <summary>MIME type, e.g. "text/plain".</summary>
+        </member>
+        <member name="P:FileStorage.Core.Helpers.FileSignature.Extension">
+            <summary>Usual file extension without the dot, e.g. "txt".</summary>
         </member>
         <member name="M:FileStorage.Core.Helpers.StreamHelper.FilesAreEqual(System.String,System.String)">
             <summary>
@@ -1330,6 +1562,52 @@
             Вызывается при продолжении работы сервиса после паузы.
             </summary>
         </member>
+        <member name="T:FileStorage.Core.Interfaces.Settings.FileCompressionSettings">
+            <summary>
+            Storing files of well compressible types as zip archives: "&lt;id&gt;.zip" instead of "&lt;id&gt;".
+            Archives are unpacked transparently on read.
+            </summary>
+        </member>
+        <member name="F:FileStorage.Core.Interfaces.Settings.FileCompressionSettings.DefaultExtensions">
+            <summary>
+            Default types (extensions from <see cref="T:FileStorage.Core.Helpers.FileSignatureDetector"/>) that compress well.
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.Interfaces.Settings.FileCompressionSettings.Enabled">
+            <summary>
+            Compress new files (on by default). Archives already on disk are read regardless of this setting.
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.Interfaces.Settings.FileCompressionSettings.MinSize">
+            <summary>
+            Smaller files are stored as is, bytes.
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.Interfaces.Settings.FileCompressionSettings.MaxSize">
+            <summary>
+            Larger files are stored as is, bytes: partial reads of an archive unpack it into a temporary file.
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.Interfaces.Settings.FileCompressionSettings.MaxRatio">
+            <summary>
+            The archive is kept only if its size is not more than this part of the original size.
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.Interfaces.Settings.FileCompressionSettings.Level">
+            <summary>
+            Compression level.
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.Interfaces.Settings.FileCompressionSettings.CompressUnknown">
+            <summary>
+            Compress files whose type is not detected by the signature (the ratio check still applies).
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.Interfaces.Settings.FileCompressionSettings.Extensions">
+            <summary>
+            Types to compress: extensions from <see cref="T:FileStorage.Core.Helpers.FileSignatureDetector"/>.
+            </summary>
+        </member>
         <member name="T:FileStorage.Core.Interfaces.Settings.IFileStorageSettings">
             <summary>
             FS settings
@@ -1348,6 +1626,11 @@
         <member name="P:FileStorage.Core.Interfaces.Settings.IFileStorageSettings.Depth">
             <summary>
             how many nested directories will be created should be less than <see cref="P:FileStorage.Core.Interfaces.Settings.IFileStorageSettings.ElementsCount"/>
+            </summary>
+        </member>
+        <member name="P:FileStorage.Core.Interfaces.Settings.IFileStorageSettings.Compression">
+            <summary>
+            Storing well compressible files as zip archives; null — files are not compressed
             </summary>
         </member>
     </members>

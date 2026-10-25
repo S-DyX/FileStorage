@@ -13,6 +13,21 @@
             Пустой поток, как и раньше, ничего не отправляет.
             </summary>
         </member>
+        <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.DefaultHttpClientFactory">
+            <summary>
+            <see cref="T:System.Net.Http.IHttpClientFactory"/> for clients created without a factory. Service.Registry 6.x leaves
+            RestClientResponseBase.ClientFactory null in this case, so every request failed with NullReferenceException.
+            One thread-safe <see cref="T:System.Net.Http.HttpClient"/> per name; pooled connections are recycled to pick up DNS changes.
+            </summary>
+        </member>
+        <member name="P:FileStorage.Contracts.Rest.Impl.FileStorage.DefaultHttpClientFactory.Instance">
+            <summary>
+            Shared instance.
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.DefaultHttpClientFactory.CreateClient(System.String)">
+            <inheritdoc />
+        </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.ITcpFileStorageService.IsExists(System.String,System.String)">
             <summary>
             Is exists on FS
@@ -160,6 +175,61 @@
             <param name="storageName"></param>
             <returns>true, if the file existed and was deleted</returns>
         </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.GetStorageNames">
+            <summary>
+            Names of the storages created on the server
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.OpenRead(System.String,System.String)">
+            <summary>
+            Opens the file for sequential reading directly from the HTTP response (not seekable).
+            Returns null if the file does not exist.
+            </summary>
+            <param name="fileId">internal FS id</param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.OpenReadByExternalId(System.String,System.String)">
+            <summary>
+            Same as <see cref="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.OpenRead(System.String,System.String)"/>, by id from your system
+            </summary>
+            <param name="externalFileId">this is file id from your system</param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.Upload(System.String,System.IO.Stream,System.String)">
+            <summary>
+            Uploads the stream in one multipart request (faster than <see cref="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.SaveBytes(System.String,System.String,System.IO.Stream,System.String)"/>,
+            which sends base64 chunks). The file id is computed from <paramref name="externalFileId"/>.
+            The stream is read from its current position and is not closed.
+            </summary>
+            <param name="externalFileId">this is file id from your system</param>
+            <param name="stream"></param>
+            <param name="storageName"></param>
+            <returns>internal FS id of the saved file</returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.GetFullName(System.String,System.String)">
+            <summary>
+            Full path of the file on the server disk (for services running on the same host)
+            </summary>
+            <param name="fileId">internal FS id</param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.ChangeDepth(System.Int32,System.String)">
+            <summary>
+            Changes the depth of the storage folder tree (moves the files). Use only on an idle storage.
+            </summary>
+            <param name="newDepth"></param>
+            <param name="storageName"></param>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService.GetVersion">
+            <summary>
+            Version of the FileStorage server (also a health check)
+            </summary>
+            <returns></returns>
+        </member>
         <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService">
             <summary>
             Impl <see cref="T:FileStorage.Contracts.Rest.Impl.FileStorage.IFileStorageRestService"/>
@@ -278,24 +348,25 @@
             </summary>
         </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.GetStorageNames">
-            <summary>
-            Names of the storages created on the server
-            </summary>
+            <inheritdoc />
         </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.OpenRead(System.String,System.String)">
-            <summary>
-            Opens the file for sequential reading directly from the HTTP response, without base64 and chunks
-            (unlike <see cref="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.GetStream(System.String,System.String)"/>, the stream is not seekable). Returns null if the file does not exist.
-            </summary>
-            <param name="fileId">FS internal id</param>
-            <param name="storageName"></param>
+            <inheritdoc />
         </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.OpenReadByExternalId(System.String,System.String)">
-            <summary>
-            Same as <see cref="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.OpenRead(System.String,System.String)"/>, by id from your system
-            </summary>
-            <param name="externalFileId">this is file id from your system</param>
-            <param name="storageName"></param>
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.Upload(System.String,System.IO.Stream,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.GetFullName(System.String,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.ChangeDepth(System.Int32,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FileStorageRestService.GetVersion">
+            <inheritdoc />
         </member>
         <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService">
             <summary>
@@ -346,18 +417,22 @@
             <returns></returns>
         </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService.GetStorageNames">
-            <summary>
-            Names of the storages created on the server
-            </summary>
+            <inheritdoc />
         </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService.OpenRead(System.String,System.String,System.String)">
-            <summary>
-            Opens the file for sequential reading directly from the HTTP response, without base64 and chunks
-            (unlike <see cref="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService.GetStream(System.String,System.String,System.String)"/>, the stream is not seekable). Returns null if the file does not exist.
-            </summary>
-            <param name="externalFolderId">this is folder id from your system</param>
-            <param name="externalFileId">this is file id from your system</param>
-            <param name="storageName"></param>
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService.GetFullName(System.String,System.String,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService.ClearTtl(System.Int32,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService.ChangeDepth(System.Int32,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestService.GetVersion">
+            <inheritdoc />
         </member>
         <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld">
             <summary>
@@ -424,6 +499,24 @@
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.Move(System.String,System.String,System.String,System.String)">
             <inheritdoc />
         </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.GetStorageNames">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.OpenRead(System.String,System.String,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.GetFullName(System.String,System.String,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.ClearTtl(System.Int32,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.ChangeDepth(System.Int32,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.FolderStorageRestServiceOld.GetVersion">
+            <inheritdoc />
+        </member>
         <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.RestHelper">
             <summary>
             Общие операции REST-клиентов: кодирование параметров запроса, GET/POST с проверкой ответа
@@ -445,6 +538,21 @@
             GET без разбора тела ответа; true, если сервер ответил успешно
             </summary>
         </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.RestHelper.GetEnsureSuccess(System.Net.Http.HttpClient,System.String)">
+            <summary>
+            GET без разбора тела ответа; исключение, если сервер ответил ошибкой
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.RestHelper.ParseString(System.String)">
+            <summary>
+            Строка из ответа: ASP.NET Core отдаёт строку как text/plain, а при JSON-форматере — в кавычках
+            </summary>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.RestHelper.PostContent(System.Net.Http.HttpClient,System.String,System.Net.Http.HttpContent)">
+            <summary>
+            POST произвольного содержимого; исключение, если сервер ответил ошибкой. Возвращает тело ответа.
+            </summary>
+        </member>
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.RestHelper.PostJson(System.Net.Http.HttpClient,System.String,System.Object)">
             <summary>
             POST JSON. Если сервер ответил ошибкой — исключение: раньше ошибки записи терялись молча.
@@ -453,6 +561,12 @@
         <member name="M:FileStorage.Contracts.Rest.Impl.FileStorage.RestHelper.OpenRead(System.Net.Http.HttpClient,System.String)">
             <summary>
             Открывает тело ответа как поток, не загружая его в память. null — файла нет (404 или пустой ответ).
+            </summary>
+        </member>
+        <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.NonDisposingStreamContent">
+            <summary>
+            Содержимое запроса из потока вызывающего кода: копирует поток, но не закрывает его
+            (StreamContent закрывает поток вместе с собой)
             </summary>
         </member>
         <member name="T:FileStorage.Contracts.Rest.Impl.FileStorage.HttpResponseStream">
@@ -857,6 +971,60 @@
             <param name="externalFolderId">this is folder id from your system</param>
             <param name="externalFileId">this is file id from your system</param> 
             <param name="name"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.IFolderStorageRestService.Move(System.String,System.String,System.String,System.String)">
+            <summary>
+            Moves the file to another folder
+            </summary>
+            <param name="externalFolderId">this is folder id from your system</param>
+            <param name="toExternalFolderId">target folder id from your system</param>
+            <param name="externalFileId">this is file id from your system</param>
+            <param name="storageName"></param>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.IFolderStorageRestService.GetStorageNames">
+            <summary>
+            Names of the storages created on the server
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.IFolderStorageRestService.OpenRead(System.String,System.String,System.String)">
+            <summary>
+            Opens the file for sequential reading directly from the HTTP response (not seekable).
+            Returns null if the file does not exist.
+            </summary>
+            <param name="externalFolderId">this is folder id from your system</param>
+            <param name="externalFileId">this is file id from your system</param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.IFolderStorageRestService.GetFullName(System.String,System.String,System.String)">
+            <summary>
+            Full path of the file on the server disk (for services running on the same host)
+            </summary>
+            <param name="externalFolderId">this is folder id from your system</param>
+            <param name="externalFileId">this is file id from your system</param>
+            <param name="storageName"></param>
+            <returns></returns>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.IFolderStorageRestService.ClearTtl(System.Int32,System.String)">
+            <summary>
+            Deletes files older than <paramref name="daysAgo"/> days (TTL cleanup)
+            </summary>
+            <param name="daysAgo"></param>
+            <param name="storageName"></param>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.IFolderStorageRestService.ChangeDepth(System.Int32,System.String)">
+            <summary>
+            Changes the depth of the storage folder tree (moves the files). Use only on an idle storage.
+            </summary>
+            <param name="newDepth"></param>
+            <param name="storageName"></param>
+        </member>
+        <member name="M:FileStorage.Contracts.Rest.Impl.IFolderStorageRestService.GetVersion">
+            <summary>
+            Version of the FileStorage server (also a health check)
+            </summary>
             <returns></returns>
         </member>
     </members>
