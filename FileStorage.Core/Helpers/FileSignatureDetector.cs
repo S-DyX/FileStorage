@@ -3,7 +3,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.IO;
 using System.Text;
-using System.Text.Unicode;
 
 namespace FileStorage.Core.Helpers
 {
@@ -186,7 +185,7 @@ namespace FileStorage.Core.Helpers
 			var buffer = ArrayPool<byte>.Shared.Rent(HeaderSize);
 			try
 			{
-				var count = stream.ReadAtLeast(buffer.AsSpan(0, HeaderSize), HeaderSize, throwOnEndOfStream: false);
+				var count = ReadAtLeast(stream, buffer.AsSpan(0, HeaderSize));
 				var header = buffer.AsSpan(0, count);
 				var type = Detect(header, count < HeaderSize);
 				if (ReferenceEquals(type, OleCompound))
@@ -397,7 +396,7 @@ namespace FileStorage.Core.Helpers
 			var text = Matches(header, 0, Utf8Bom) ? header.Slice(3) : header;
 			if (!isWholeFile)
 				text = TrimIncompleteUtf8(text);
-			if (text.IsEmpty || !Utf8.IsValid(text) || HasControlCharacters(text))
+			if (text.IsEmpty || !IsValidUtf8(text) || HasControlCharacters(text))
 				return null;
 
 			var content = text.TrimStart(" \t\r\n"u8);
@@ -433,7 +432,7 @@ namespace FileStorage.Core.Helpers
 		{
 			var lineEnd = content.IndexOfAny((byte)'\r', (byte)'\n');
 			var line = lineEnd >= 0 ? content.Slice(0, lineEnd) : content;
-			return line.Count((byte)';') >= 2 || line.Count((byte)'\t') >= 2;
+			return CountOf(line, (byte)';') >= 2 || CountOf(line, (byte)'\t') >= 2;
 		}
 
 		private static bool HasControlCharacters(ReadOnlySpan<byte> text)
@@ -512,7 +511,7 @@ namespace FileStorage.Core.Helpers
 
 					rented = ArrayPool<byte>.Shared.Rent(sectorSize);
 					stream.Position = start + offset;
-					var read = stream.ReadAtLeast(rented.AsSpan(0, sectorSize), sectorSize, throwOnEndOfStream: false);
+					var read = ReadAtLeast(stream, rented.AsSpan(0, sectorSize));
 					directory = rented.AsSpan(0, read);
 				}
 
@@ -551,8 +550,52 @@ namespace FileStorage.Core.Helpers
 
 			Span<byte> signature = stackalloc byte[5];
 			stream.Position = start + IsoSignatureOffset;
-			var read = stream.ReadAtLeast(signature, signature.Length, throwOnEndOfStream: false);
+			var read = ReadAtLeast(stream, signature);
 			return read == signature.Length && signature.SequenceEqual("CD001"u8) ? Iso : null;
+		}
+
+		/// <summary>
+		/// Reads until the buffer is full or the stream ends (Stream.ReadAtLeast is not available in .NET 6).
+		/// </summary>
+		private static int ReadAtLeast(Stream stream, Span<byte> buffer)
+		{
+			var total = 0;
+			while (total < buffer.Length)
+			{
+				var read = stream.Read(buffer.Slice(total));
+				if (read <= 0)
+					break;
+				total += read;
+			}
+
+			return total;
+		}
+
+		/// <summary>
+		/// Utf8.IsValid is not available in .NET 6.
+		/// </summary>
+		private static bool IsValidUtf8(ReadOnlySpan<byte> text)
+		{
+			while (!text.IsEmpty)
+			{
+				if (Rune.DecodeFromUtf8(text, out _, out var consumed) != OperationStatus.Done)
+					return false;
+				text = text.Slice(consumed);
+			}
+
+			return true;
+		}
+
+		private static int CountOf(ReadOnlySpan<byte> text, byte value)
+		{
+			var count = 0;
+			foreach (var b in text)
+			{
+				if (b == value)
+					count++;
+			}
+
+			return count;
 		}
 
 		private sealed record FileType(string ContentType, string Extension);

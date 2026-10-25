@@ -235,7 +235,7 @@ namespace FileStorage.Contracts.Rest.Impl.FileStorage
 		/// Ctor
 		/// </summary>
 		/// <param name="settings"><see cref="RestClientResponseSettings"/></param>
-		public FileStorageRestService(RestClientResponseSettings settings) : base(settings)
+		public FileStorageRestService(RestClientResponseSettings settings) : base(settings, DefaultHttpClientFactory.Instance)
 		{
 			if (Settings.Host.EndsWith("/"))
 				_apiV1 = $"{Settings.Host}api/v1/filestorage/";

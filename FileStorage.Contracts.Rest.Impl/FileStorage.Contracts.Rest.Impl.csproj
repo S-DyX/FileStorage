@@ -1,7 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <!-- net6.0 — для проектов, которые ещё не перешли на .NET 9 -->
+    <TargetFrameworks>net6.0;net9.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
     <Version>9.0.29</Version>
     <Authors>Stanislav Batyrgareev</Authors>
     <Description>Fixed the return of Stream in the class FileStorageRestService.</Description>
@@ -20,8 +22,13 @@
     <DocumentationFile>$(MSBuildProjectDirectory)\FileStorage.Contracts.Rest.Impl.xml</DocumentationFile>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
     <PackageReference Include="Service.Registry" Version="9.0.47" />
+  </ItemGroup>
+
+  <!-- Service.Registry 9.x собран только под net9.0 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net6.0'">
+    <PackageReference Include="Service.Registry" Version="6.0.47" />
   </ItemGroup>
 
 </Project>

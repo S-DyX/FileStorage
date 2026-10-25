@@ -119,12 +119,14 @@ namespace FileStorage.Core.Helpers
 				if (entry.Length > MemoryThreshold)
 					return DecompressedFileCache.Open(info, entry);
 
-				var bytes = new byte[entry.Length];
+				// Stream.ReadExactly is not available in .NET 6
+				var result = new MemoryStream((int)entry.Length);
 				using (var input = entry.Open())
 				{
-					input.ReadExactly(bytes);
+					input.CopyTo(result);
 				}
-				return new MemoryStream(bytes, false);
+				result.Position = 0;
+				return result;
 			}
 		}
 
