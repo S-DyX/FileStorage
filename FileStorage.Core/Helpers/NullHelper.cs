@@ -11,14 +11,6 @@ namespace FileStorage.Core.Helpers
 			return list == null || !list.Any();
 		}
 
-		public static TResult With<TInput, TResult>(this TInput o, Func<TInput, TResult> evaluator)
-			where TResult : class
-			where TInput : class
-		{
-			if (o == null) return null;
-			return evaluator(o);
-		}
-
 		public static TResult Return<TInput, TResult>(this TInput o, Func<TInput, TResult> evaluator, TResult defaultValue)
 			where TInput : class
 		{
@@ -33,12 +25,6 @@ namespace FileStorage.Core.Helpers
 			return evaluator(o) ? o : null;
 		}
 
-		public static TInput Unless<TInput>(this TInput o, Func<TInput, bool> evaluator)
-			where TInput : class
-		{
-			if (o == null) return null;
-			return evaluator(o) ? null : o;
-		}
 
 		public static TInput Do<TInput>(this TInput o, Action<TInput> action)
 			where TInput : class
@@ -48,19 +34,5 @@ namespace FileStorage.Core.Helpers
 			return o;
 		}
 
-		public static TInput GetValueOrDefault<TInput>(this TInput o, Predicate<TInput> predicate, TInput defaultValue)
-		{
-			return predicate(o) ? defaultValue : o;
-		}
-
-		public static TInput GetValueOrDefault<TInput>(this TInput o, TInput defaultValue) where TInput : class
-		{
-			return o ?? defaultValue;
-		}
-
-		public static bool IsNull<TInput>(this TInput o) where TInput : class
-		{
-			return o == null;
-		}
 	}
 }
