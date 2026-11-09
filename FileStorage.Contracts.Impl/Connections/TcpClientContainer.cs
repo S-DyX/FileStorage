@@ -48,6 +48,11 @@ namespace FileStorage.Contracts.Impl.Connections
 		bool Broadcast<T>(T message);
 
 		bool Broadcast(byte[] bytes);
+
+		/// <summary>
+		/// Адрес клиента для журнала; null, если соединение уже закрыто
+		/// </summary>
+		string RemoteEndPoint { get; }
 	}
 
 	public abstract class TcpClientContainerBase : IWebSocketContainer
@@ -71,6 +76,21 @@ namespace FileStorage.Contracts.Impl.Connections
 		public event StopHandler StopEvent;
 		public IUidObject Obj { get; protected set; }
 		public TcpClient Client { get; protected set; }
+
+		public string RemoteEndPoint
+		{
+			get
+			{
+				try
+				{
+					return Client?.Client?.RemoteEndPoint?.ToString();
+				}
+				catch (ObjectDisposedException)
+				{
+					return null;
+				}
+			}
+		}
 
 		private readonly object _sync = new object();
 		public int Increment()
@@ -225,6 +245,13 @@ namespace FileStorage.Contracts.Impl.Connections
 							Broadcast(response.Bytes);
 						}
 					}
+				}
+				catch (TcpFrameTooLargeException tooLarge)
+				{
+					// остаток кадра разобрать нельзя: закрываем соединение, клиент сразу получит ошибку
+					_localLogger?.Error($"Tcp client {RemoteEndPoint}: {tooLarge.Message}. Connection closed");
+					Stop();
+					return;
 				}
 				catch (ObjectDisposedException ode)
 				{

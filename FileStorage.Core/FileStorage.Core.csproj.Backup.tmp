@@ -1,0 +1,50 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net6.0 — для проектов, которые ещё не перешли на .NET 9 -->
+    <TargetFrameworks></TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Authors>Stanislav Batyrgareev</Authors>
+    <Version>9.0.19</Version>
+    <AssemblyVersion></AssemblyVersion>
+    <Description>FileStorage.Core is Hierarchical file storage</Description>
+    <Copyright>Stanislav Batyrgareev</Copyright>
+    <PackageProjectUrl>http://bsasearch.ru/filestorage.html</PackageProjectUrl>
+    <RepositoryUrl>https://bitbucket.org/SBatyrgareev/filestorage/src</RepositoryUrl>
+    <RepositoryType>Git</RepositoryType>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <FileVersion></FileVersion>
+    <PackageTags>file storage disk hierarchical bsa filestorage files stream store</PackageTags>
+    <PackageLicenseExpression>BSD-2-Clause</PackageLicenseExpression>
+    <PackageReleaseNotes>Fixed clear ttl</PackageReleaseNotes>
+    <Title>FileStorage</Title>
+    <TargetFramework>net9.0</TargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DocumentationFile>$(MSBuildProjectDirectory)\FileStorage.Core.xml</DocumentationFile>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <WarningLevel>0</WarningLevel>
+  </PropertyGroup>
+
+  <ItemGroup>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+	  <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.22" />
+	  <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.7" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.7" />
+  </ItemGroup>
+	<ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.14" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.14" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.14" />
+	</ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net6.0'">
+	  <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="6.0.3" />
+	  <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="6.0.1" />
+  </ItemGroup>
+
+</Project>

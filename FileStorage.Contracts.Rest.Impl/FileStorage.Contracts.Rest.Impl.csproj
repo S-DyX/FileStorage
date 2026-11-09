@@ -4,7 +4,7 @@
     <!-- net6.0 — для проектов, которые ещё не перешли на .NET 9 -->
     <TargetFrameworks>net6.0;net9.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
-    <Version>9.0.29</Version>
+    <Version>9.0.30</Version>
     <Authors>Stanislav Batyrgareev</Authors>
     <Description>Fixed the return of Stream in the class FileStorageRestService.</Description>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>

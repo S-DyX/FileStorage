@@ -10,6 +10,19 @@ namespace FileStorage.Contracts.Impl.Connections
 {
 	public sealed class MessageProcessingService : IMessageProcessingService
 	{
+		/// <summary>
+		/// Наибольший файл, который можно прочитать по TCP целиком (без Length). Ответ с файлом в base64
+		/// занимает в памяти около 2,4 размера файла; файлы больше читаются частями (Offset/Length).
+		/// </summary>
+		public const long MaxWholeFileReadSize = 16 * 1024 * 1024;
+
+		/// <summary>
+		/// Чтения и записи с содержимым больше этого размера пишутся в журнал с адресом клиента.
+		/// Текущий клиент читает частями по 1 МБ и пишет по 64 КБ, так что в журнал попадают
+		/// в основном старые клиенты, передающие файл целиком.
+		/// </summary>
+		private const long LargeContentSize = 1024 * 1024;
+
 		private readonly ITcpClientRegistry _tcpClientRegistry;
 		private readonly ILocalLogger _localLogger;
 		private readonly Encoding _encoding;
@@ -149,10 +162,14 @@ namespace FileStorage.Contracts.Impl.Connections
 					}
 
 					{
-						// Length > 0 — чтение части файла (Offset/Length); иначе, как раньше, файл целиком.
-						// Признак IsPartial сообщает клиенту, что вернулась только запрошенная часть.
+						// Length > 0 — чтение части файла (Offset/Length); иначе файл целиком, если он не больше
+						// MaxWholeFileReadSize. Признак IsPartial сообщает клиенту, что вернулась только запрошенная часть.
 						var partial = messageReadCommand.Length > 0;
 						var length = (int)Math.Min(messageReadCommand.Length, int.MaxValue);
+						if (!partial && IsTooLargeForWholeRead(@from, message))
+						{
+							return null;
+						}
 						if (!string.IsNullOrEmpty(messageReadCommand.FolderId))
 						{
 							var info = GetFolderStorageInfo(messageReadCommand);
@@ -160,6 +177,7 @@ namespace FileStorage.Contracts.Impl.Connections
 								? _folderStorageService.GetBytesOffset(info, messageReadCommand.Offset, length)
 								: _folderStorageService.GetBytes(info);
 							tcpCommonMessage.ReadCommand.IsPartial = partial;
+							LogLargeContent(@from, message, "Read", tcpCommonMessage.ReadCommand.Content?.LongLength ?? 0);
 							@from.Broadcast(tcpCommonMessage);
 						}
 						else if (!string.IsNullOrEmpty(messageReadCommand.FileId))
@@ -168,6 +186,7 @@ namespace FileStorage.Contracts.Impl.Connections
 								? _fileStorageService.GetBytesOffset(messageReadCommand.FileId, messageReadCommand.Offset, length, messageReadCommand.StorageName)
 								: _fileStorageService.GetBytes(messageReadCommand.FileId, messageReadCommand.StorageName);
 							tcpCommonMessage.ReadCommand.IsPartial = partial;
+							LogLargeContent(@from, message, "Read", tcpCommonMessage.ReadCommand.Content?.LongLength ?? 0);
 							@from.Broadcast(tcpCommonMessage);
 						}
 					}
@@ -277,6 +296,7 @@ namespace FileStorage.Contracts.Impl.Connections
 						}
 					}
 
+					LogLargeContent(@from, message, "Write", messageWriteCommand.Content?.LongLength ?? 0);
 					if (!string.IsNullOrEmpty(messageWriteCommand.FolderId))
 					{
 						_folderStorageService.SaveById(new FileBatchRequest()
@@ -320,6 +340,56 @@ namespace FileStorage.Contracts.Impl.Connections
 			}
 
 			return null;
+		}
+
+		/// <summary>
+		/// Отказывает в чтении целиком файла больше MaxWholeFileReadSize: отвечает BadRequest и пишет в журнал
+		/// адрес клиента. Возвращает true, если чтение отклонено.
+		/// </summary>
+		private bool IsTooLargeForWholeRead(IWebSocketContainer @from, TcpCommonMessage message)
+		{
+			var command = message.ReadCommand;
+			long size;
+			string name;
+			if (!string.IsNullOrEmpty(command.FolderId))
+			{
+				size = _folderStorageService.GetSize(GetFolderStorageInfo(command));
+				name = $"{command.FolderId}/{command.FileId}";
+			}
+			else if (!string.IsNullOrEmpty(command.FileId))
+			{
+				size = _fileStorageService.GetSize(command.FileId, command.StorageName);
+				name = command.FileId;
+			}
+			else
+			{
+				return false;
+			}
+
+			if (size <= MaxWholeFileReadSize)
+				return false;
+
+			_localLogger?.Error($"Tcp client {@from?.RemoteEndPoint}: whole file read rejected, {name} ({command.StorageName}) is {size} bytes, limit {MaxWholeFileReadSize}; RequestId {message.RequestId}");
+			@from?.Broadcast(new TcpCommonMessage()
+			{
+				RequestId = message.RequestId,
+				Type = TcpMessageType.BadRequest,
+				Error = new ErrorChatMessage()
+				{
+					Error = $"File is {size} bytes, whole file read is limited to {MaxWholeFileReadSize} bytes: read it in parts (Offset/Length)"
+				}
+			});
+			return true;
+		}
+
+		private void LogLargeContent(IWebSocketContainer @from, TcpCommonMessage message, string operation, long contentLength)
+		{
+			if (contentLength <= LargeContentSize)
+				return;
+			var fileId = message.ReadCommand?.FileId ?? message.WriteCommand?.FileId;
+			var folderId = message.ReadCommand?.FolderId ?? message.WriteCommand?.FolderId;
+			var storageName = message.ReadCommand?.StorageName ?? message.WriteCommand?.StorageName;
+			_localLogger?.Info($"Large tcp {operation}: client {@from?.RemoteEndPoint}, {contentLength} bytes, file {folderId}/{fileId} ({storageName}), RequestId {message.RequestId}");
 		}
 
 		private static bool IsValidMessage(IWebSocketContainer @from, TcpCommonMessage message)

@@ -219,11 +219,18 @@ namespace FileStorage.Core
 		public void ClearTtl(DateTime date)
 		{
 			_localLogger?.Info($"TTL Start:{date}");
-			var files = _log.GetAll().OrderBy(x => x.Time).ToList();
+			// События всё равно обрабатываются параллельно, без порядка: сортировка и ToList давали ещё три полные копии журнала.
+			var files = _log.GetAll();
 			// удаления: обычные и удаление из старой папки при переносе
 			var deletedById = files
 				.Where(x => x.Type == EventType.FileDelete || x.Type == EventType.FileMoveDelete)
 				.ToLookup(x => x.Id);
+			// Журнал хранит последнее событие файла по каждому месяцу, поэтому у файла может быть старая запись
+			// о сохранении и свежая — о повторном сохранении в ту же папку. Раньше файл удалялся по старой записи.
+			var freshSaved = new HashSet<string>(
+				files.Where(x => x.Time > date && x.Type == EventType.FileSave && !string.IsNullOrEmpty(x.FolderId))
+					.Select(x => GetTtlKey(x.FolderId, x.Id)),
+				StringComparer.Ordinal);
 			var save = new List<EventMessage>();
 			var foundAny = false;
 			Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = MaxIoParallelism }, file =>
@@ -258,6 +265,12 @@ namespace FileStorage.Core
 					return;
 				}
 
+				// файл сохранён в эту папку заново после даты TTL
+				if (freshSaved.Contains(GetTtlKey(file.FolderId, file.Id)))
+				{
+					return;
+				}
+
 				Delete(new FolderStorageInfo()
 				{
 					FileId = file.Id,
@@ -269,6 +282,11 @@ namespace FileStorage.Core
 			if (foundAny)
 				_log.Rewrite(save, DateTime.UtcNow);
 			DeleteExpiredFiles(date, save);
+		}
+
+		private static string GetTtlKey(string folderId, string fileId)
+		{
+			return folderId + "/" + fileId;
 		}
 
 		public void Drop()

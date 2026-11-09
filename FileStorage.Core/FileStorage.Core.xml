@@ -36,6 +36,16 @@
             при переносе между папками удаление из старой папки и сохранение в новой не перекрывают друг друга.
             </summary>
         </member>
+        <member name="P:FileStorage.Core.Entities.EventMessageGroup.Count">
+            <summary>
+            Число файлов в группе (у id с несколькими папками событий больше)
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Entities.EventMessageGroup.AppendTo(System.Collections.Generic.List{FileStorage.Core.Entities.EventMessage})">
+            <summary>
+            Добавляет все события группы в <paramref name="result"/>
+            </summary>
+        </member>
         <member name="M:FileStorage.Core.Entities.EventMessageGroup.GetById(System.String)">
             <summary>
             Последнее по времени событие файла в любой папке
@@ -1522,6 +1532,11 @@
         <member name="T:FileStorage.Core.Interfaces.Cache`1">
             <inheritdoc cref="T:FileStorage.Core.Interfaces.ICache`1"/>
         </member>
+        <member name="P:FileStorage.Core.Interfaces.FileInfoLocal.Position">
+            <summary>
+            Позиция в байтах после последней прочитанной полной строки
+            </summary>
+        </member>
         <member name="M:FileStorage.Core.Interfaces.FileStorageLog.GetLogFiles">
             <summary>
             Файлы журнала (Log/yyyyMM/yyyyMM.log) с месяцем, к которому они относятся, по возрастанию месяца
@@ -1530,6 +1545,13 @@
         <member name="M:FileStorage.Core.Interfaces.FileStorageLog.Dispose">
             <summary>
             Останавливает таймеры и сохраняет ещё не записанные события
+            </summary>
+        </member>
+        <member name="M:FileStorage.Core.Interfaces.FileStorageLog.LoadFromFile(FileStorage.Core.Interfaces.FileInfoLocal)">
+            <summary>
+            Читает строки журнала с сохранённой позиции до конца файла. Раньше файл каждый раз читался с начала,
+            а уже прочитанные строки пропускались по счётчику: раз в минуту весь месячный журнал читался
+            с диска и разбивался на строки. Неполная последняя строка (журнал дописывается) остаётся до следующего чтения.
             </summary>
         </member>
         <member name="M:FileStorage.Core.Interfaces.FileStorageLog.Escape(System.String)">

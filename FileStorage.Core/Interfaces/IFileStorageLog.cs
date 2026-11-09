@@ -52,7 +52,10 @@ namespace FileStorage.Core.Interfaces
 
 		public DateTime LastWriteTimeUtc { get; set; }
 
-		public long Lines { get; set; }
+		/// <summary>
+		/// Позиция в байтах после последней прочитанной полной строки
+		/// </summary>
+		public long Position { get; set; }
 	}
 
 	public class FileStorageLog : IFileStorageLog
@@ -180,7 +183,17 @@ namespace FileStorage.Core.Interfaces
 				}
 
 				// События, ещё не сброшенные на диск (например, удаления из ClearTtl), сохраняем в новый журнал.
-				var toSave = eventMessages.Concat(_newEvents).Distinct().ToList();
+				// Часть из них уже есть в eventMessages (это снимок журнала); множество строим только по _newEvents.
+				// Раньше Distinct строил множество из всех событий журнала, а ToList делал ещё одну полную копию.
+				var pending = new HashSet<EventMessage>(_newEvents);
+				foreach (var eventMessage in eventMessages)
+					pending.Remove(eventMessage);
+				var notSaved = new List<EventMessage>(pending.Count);
+				foreach (var eventMessage in _newEvents)
+				{
+					if (pending.Remove(eventMessage))
+						notSaved.Add(eventMessage);
+				}
 				_newEvents.Clear();
 
 				// Сбрасываем состояние: иначе новый файл с тем же именем не загрузится (он уже есть в _files),
@@ -188,8 +201,10 @@ namespace FileStorage.Core.Interfaces
 				_files.Clear();
 				_scope = new EventMessageScope();
 
-				if (toSave.Any())
-					Save(toSave, DateTime.UtcNow);
+				if (eventMessages.Count > 0)
+					Save(eventMessages, DateTime.UtcNow);
+				if (notSaved.Count > 0)
+					Save(notSaved, DateTime.UtcNow);
 				Reinit();
 			}
 		}
@@ -223,7 +238,8 @@ namespace FileStorage.Core.Interfaces
 				foreach (var file in _files)
 				{
 					var fileInfo = new FileInfo(file.FileName);
-					if (fileInfo.Exists && fileInfo.LastWriteTimeUtc > file.LastWriteTimeUtc)
+					// читаем только дописанный хвост: позиция хранится в байтах
+					if (fileInfo.Exists && (fileInfo.Length != file.Position || fileInfo.LastWriteTimeUtc > file.LastWriteTimeUtc))
 					{
 						file.LastWriteTimeUtc = fileInfo.LastWriteTimeUtc;
 						events.AddRange(LoadFromFile(file));
@@ -239,12 +255,6 @@ namespace FileStorage.Core.Interfaces
 
 		private void Save(List<EventMessage> items, DateTime date)
 		{
-			var sb = new StringBuilder();
-			foreach (var item in items)
-			{
-				// Время в ISO 8601 ("O"): не зависит от культуры сервера и хранит время с точностью до тика.
-				sb.AppendLine($"{item.Time.ToString("O", CultureInfo.InvariantCulture)};{Escape(item.Id)};{Escape(item.FolderId)};{(int)item.Type};{item.Size.ToString(CultureInfo.InvariantCulture)}");
-			}
 			var fileName = GetFileName(date);
 			var fileInfo = new FileInfo(fileName);
 			if (!fileInfo.Exists && !fileInfo.Directory.Exists)
@@ -255,9 +265,15 @@ namespace FileStorage.Core.Interfaces
 			try
 			{
 
-				using (var outstream = new StreamWriter(fileName, true, Encoding.UTF8))
+				// Строки пишутся сразу в файл. Раньше весь список собирался в StringBuilder и строку:
+				// при Rewrite из ClearTtl это две копии всего журнала в памяти (по ~250 байт на событие).
+				using (var outstream = new StreamWriter(fileName, true, Encoding.UTF8, 64 * 1024))
 				{
-					outstream.Write(sb.ToString());
+					foreach (var item in items)
+					{
+						// Время в ISO 8601 ("O"): не зависит от культуры сервера и хранит время с точностью до тика.
+						outstream.WriteLine($"{item.Time.ToString("O", CultureInfo.InvariantCulture)};{Escape(item.Id)};{Escape(item.FolderId)};{(int)item.Type};{item.Size.ToString(CultureInfo.InvariantCulture)}");
+					}
 				}
 			}
 			catch (Exception ex)
@@ -303,35 +319,72 @@ namespace FileStorage.Core.Interfaces
 			}
 		}
 
+		private const int ReadBufferSize = 64 * 1024;
+
+		private static readonly byte[] Utf8Preamble = Encoding.UTF8.GetPreamble();
+
+		/// <summary>
+		/// Читает строки журнала с сохранённой позиции до конца файла. Раньше файл каждый раз читался с начала,
+		/// а уже прочитанные строки пропускались по счётчику: раз в минуту весь месячный журнал читался
+		/// с диска и разбивался на строки. Неполная последняя строка (журнал дописывается) остаётся до следующего чтения.
+		/// </summary>
 		private static List<EventMessage> LoadFromFile(FileInfoLocal fileInfoLocal)
 		{
 			var list = new List<EventMessage>();
-			long lineIndex = 0;
-			using (var fileStream = File.OpenRead(fileInfoLocal.FileName))
+			using (var fileStream = new FileStream(fileInfoLocal.FileName, FileMode.Open, FileAccess.Read,
+				FileShare.ReadWrite | FileShare.Delete, ReadBufferSize))
 			{
-				using (var streamReader = new StreamReader(fileStream, Encoding.UTF8))
+				// файл заменили или обрезали — читаем заново
+				if (fileStream.Length < fileInfoLocal.Position)
+					fileInfoLocal.Position = 0;
+				fileStream.Position = fileInfoLocal.Position;
+
+				var buffer = new byte[ReadBufferSize];
+				var count = 0;
+				int read;
+				while ((read = fileStream.Read(buffer, count, buffer.Length - count)) > 0)
 				{
-					String line;
-					while ((line = streamReader.ReadLine()) != null)
+					count += read;
+					var start = 0;
+					int end;
+					while ((end = Array.IndexOf(buffer, (byte)'\n', start, count - start)) >= 0)
 					{
-						lineIndex++;
-						if (fileInfoLocal.Lines >= lineIndex)
-							continue;
-
-						var data = line.Split(';');
-
-						if (data.Length >= 3)
-						{
-							EventMessage eventMessage = new EventMessage();
-							if (Parse(data, eventMessage))
-								list.Add(eventMessage);
-						}
-
+						ParseLine(buffer, start, end - start, fileInfoLocal.Position + start == 0, list);
+						start = end + 1;
 					}
+
+					fileInfoLocal.Position += start;
+					count -= start;
+					if (count > 0 && start > 0)
+						Buffer.BlockCopy(buffer, start, buffer, 0, count);
+					// строка длиннее буфера
+					if (count == buffer.Length)
+						Array.Resize(ref buffer, buffer.Length * 2);
 				}
 			}
-			fileInfoLocal.Lines = lineIndex;
 			return list;
+		}
+
+		private static void ParseLine(byte[] buffer, int offset, int length, bool isFileStart, List<EventMessage> list)
+		{
+			if (isFileStart && length >= Utf8Preamble.Length
+				&& buffer.AsSpan(offset, Utf8Preamble.Length).SequenceEqual(Utf8Preamble))
+			{
+				offset += Utf8Preamble.Length;
+				length -= Utf8Preamble.Length;
+			}
+			if (length > 0 && buffer[offset + length - 1] == (byte)'\r')
+				length--;
+			if (length <= 0)
+				return;
+
+			var data = Encoding.UTF8.GetString(buffer, offset, length).Split(';');
+			if (data.Length >= 3)
+			{
+				var eventMessage = new EventMessage();
+				if (Parse(data, eventMessage))
+					list.Add(eventMessage);
+			}
 		}
 
 		private static bool Parse(string[] data, EventMessage eventMessage)

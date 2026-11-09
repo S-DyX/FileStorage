@@ -163,9 +163,15 @@ namespace FileStorage.Core.Entities
 		{
 			lock (_sync)
 			{
-				return _group
-					.SelectMany(s => s.Value)
-					.ToList();
+				// Список сразу нужного размера и без промежуточных снимков групп. Раньше SelectMany().ToList()
+				// наращивал массив удвоением и копировал каждую группу через снимок: несколько больших массивов в LOH.
+				var count = 0;
+				foreach (var group in _group.Values)
+					count += group.Count;
+				var result = new List<EventMessage>(count);
+				foreach (var group in _group.Values)
+					group.AppendTo(result);
+				return result;
 			}
 		}
 
@@ -262,6 +268,38 @@ namespace FileStorage.Core.Entities
 			foreach (var ev in eventMessages)
 			{
 				Add(ev);
+			}
+		}
+
+		/// <summary>
+		/// Число файлов в группе (у id с несколькими папками событий больше)
+		/// </summary>
+		public int Count
+		{
+			get
+			{
+				lock (_sync)
+				{
+					return _events.Count;
+				}
+			}
+		}
+
+		/// <summary>
+		/// Добавляет все события группы в <paramref name="result"/>
+		/// </summary>
+		internal void AppendTo(List<EventMessage> result)
+		{
+			lock (_sync)
+			{
+				foreach (var value in _events.Values)
+				{
+					var single = value as EventMessage;
+					if (single != null)
+						result.Add(single);
+					else
+						result.AddRange(((Dictionary<string, EventMessage>)value).Values);
+				}
 			}
 		}
 

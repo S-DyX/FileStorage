@@ -13,7 +13,19 @@ namespace FileStorage.Contracts.Impl.Connections
 	{
 		private const int HeaderSize = 5;
 		private const int InitialBufferSize = 64 * 1024;
-		private const int MaxFrameSize = 512 * 1024 * 1024;
+
+		/// <summary>
+		/// Наибольший принимаемый кадр. Клиент пишет файл кусками по 64 КБ (в base64 — около 87 КБ),
+		/// поэтому 16 МБ хватает с запасом. Кадр с файлом целиком занимал при разборе несколько размеров
+		/// файла (буфер, строка команды, base64-токен, массив) на каждое соединение и приводил к OOM.
+		/// </summary>
+		public const int MaxFrameSize = 16 * 1024 * 1024;
+
+		/// <summary>
+		/// Длина больше этой — точно не заголовок кадра, а случайный '@' в потоке: ищем следующий.
+		/// Длина между <see cref="MaxFrameSize"/> и этим значением считается настоящим, но слишком большим кадром.
+		/// </summary>
+		private const int MaxPlausibleFrameSize = 512 * 1024 * 1024;
 
 		private byte[] _buffer = new byte[InitialBufferSize];
 		private int _count;
@@ -38,11 +50,18 @@ namespace FileStorage.Contracts.Impl.Connections
 					break;
 
 				var size = BitConverter.ToInt32(_buffer, position + 1);
-				if (size < 0 || size > MaxFrameSize)
+				if (size < 0 || size > MaxPlausibleFrameSize)
 				{
 					// не заголовок — ищем следующий '@'
 					position++;
 					continue;
+				}
+				if (size > MaxFrameSize)
+				{
+					// не копим кадр в памяти; соединение закрывается вызывающим кодом
+					_count = 0;
+					_buffer = new byte[InitialBufferSize];
+					throw new TcpFrameTooLargeException(size, MaxFrameSize);
 				}
 
 				var end = position + HeaderSize + size;

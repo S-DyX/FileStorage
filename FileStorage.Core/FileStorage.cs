@@ -215,19 +215,50 @@ namespace FileStorage.Core
 		public void ClearTtl(DateTime date)
 		{
 			_localLogger?.Info($"TTL Start:{date}");
-			var files = _log.GetAll().OrderBy(x => x.Time).ToList();
+			// Порядок событий для удаления не важен: сортировка и ToList давали ещё три полные копии журнала.
+			var files = _log.GetAll();
 			var save = new List<EventMessage>();
+			// Журнал хранит последнее событие файла по каждому месяцу, поэтому у одного id может быть старая
+			// запись о сохранении и свежая — о повторном сохранении. Без этих проверок файл удалялся
+			// по старой записи, хотя был сохранён заново после даты TTL.
+			var freshSavedIds = new HashSet<string>(StringComparer.Ordinal);
+			var lastDeleted = new Dictionary<string, DateTime>(StringComparer.Ordinal);
 			foreach (var file in files)
 			{
 				if (file.Time > date)
 				{
 					// свежие записи оставляем и в журнале, и на диске
 					save.Add(file);
-					continue;
+					if (file.Type == EventType.FileSave)
+						freshSavedIds.Add(file.Id);
 				}
+				if (IsDeleteEvent(file.Type)
+					&& (!lastDeleted.TryGetValue(file.Id, out var deletedTime) || file.Time > deletedTime))
+				{
+					lastDeleted[file.Id] = file.Time;
+				}
+			}
+
+			var processed = new HashSet<string>(StringComparer.Ordinal);
+			foreach (var file in files)
+			{
+				if (file.Time > date)
+					continue;
 
 				// события удаления повторно не обрабатываем
-				if (file.Type == EventType.FileDelete || file.Type == EventType.FileMoveDelete || file.Type == EventType.Unknown)
+				if (IsDeleteEvent(file.Type) || file.Type == EventType.Unknown)
+					continue;
+
+				// файл сохранён заново после даты TTL
+				if (freshSavedIds.Contains(file.Id))
+					continue;
+
+				// файл уже удалён после этой записи
+				if (lastDeleted.TryGetValue(file.Id, out var deletedTime) && deletedTime >= file.Time)
+					continue;
+
+				// у id может быть несколько старых записей (по разным месяцам) — удаляем один раз
+				if (!processed.Add(file.Id))
 					continue;
 
 				_localLogger?.Info("TTL:" + file.Id);
@@ -235,6 +266,11 @@ namespace FileStorage.Core
 			}
 			_log.Rewrite(save, DateTime.UtcNow);
 			DeleteExpiredFiles(date, save);
+		}
+
+		private static bool IsDeleteEvent(EventType type)
+		{
+			return type == EventType.FileDelete || type == EventType.FileMoveDelete;
 		}
 
 		public void Drop()
